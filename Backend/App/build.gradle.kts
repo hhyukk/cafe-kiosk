@@ -32,7 +32,7 @@ dependencies {
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("com.fasterxml.jackson.core:jackson-databind")
-    runtimeOnly("com.mysql:mysql-connector-j")
+    runtimeOnly("org.postgresql:postgresql")
     annotationProcessor("org.projectlombok:lombok")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
 
@@ -45,4 +45,11 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+// IntelliJ에서 Gradle로 실행 시 워킹 디렉토리가 프로젝트 루트로 잡혀
+// spring.config.import의 file:.env 경로를 못 찾는 문제 방지.
+// bootRun이 아닌 IntelliJ 자체 생성 태스크(JavaExec)로 실행되는 경우도 커버하기 위해 withType으로 적용
+tasks.withType<JavaExec> {
+    workingDir = project.projectDir
 }
