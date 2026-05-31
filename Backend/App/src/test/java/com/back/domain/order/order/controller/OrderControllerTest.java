@@ -10,13 +10,12 @@ import com.back.domain.order.customer.repository.CustomerRepository;
 import com.back.domain.order.order.entity.Order;
 import com.back.domain.order.orderitem.entity.OrderItem;
 import com.back.domain.order.orderitem.repository.OrderItemRepository;
+import com.back.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -32,11 +31,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@ActiveProfiles("test")
-@SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-public class OrderControllerTest {
+public class OrderControllerTest extends AbstractIntegrationTest {
 
     private MockMvc mvc;
 
@@ -121,7 +118,7 @@ public class OrderControllerTest {
     }
 
     @Test
-    @DisplayName("주문 내역 조회 - GET /api/order")
+    @DisplayName("주문 내역 조회 - POST /api/order/list")
     void t01_getOrderList() throws Exception {
         // given
         String email = "order@example.com";
@@ -136,24 +133,24 @@ public class OrderControllerTest {
         // when
         ResultActions resultActions = mvc
                 .perform(
-                        get("/api/order")
+                        post("/api/order/list")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(json)
                 )
                 .andDo(print());
 
-        // then
+        // then — OrderListResponse > orders[0](OrderSummary) > items[0](OrderItemDTO) 구조
         resultActions
                 .andExpect(handler().handlerType(OrderController.class))
                 .andExpect(handler().methodName("orderList"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(expected.email()))
-                .andExpect(jsonPath("$.address").value(expected.address()))
-                .andExpect(jsonPath("$.postcode").value(expected.postcode()))
                 .andExpect(jsonPath("$.orders.length()").value(expected.orders().size()))
-                .andExpect(jsonPath("$.orders[0].menuName").value(expected.orders().get(0).menuName()))
-                .andExpect(jsonPath("$.orders[0].menuPrice").value(expected.orders().get(0).menuPrice()))
-                .andExpect(jsonPath("$.orders[0].count").value(expected.orders().get(0).count()));
+                .andExpect(jsonPath("$.orders[0].address").value(expected.orders().get(0).address()))
+                .andExpect(jsonPath("$.orders[0].postcode").value(expected.orders().get(0).postcode()))
+                .andExpect(jsonPath("$.orders[0].items[0].menuName").value(expected.orders().get(0).items().get(0).menuName()))
+                .andExpect(jsonPath("$.orders[0].items[0].menuPrice").value(expected.orders().get(0).items().get(0).menuPrice()))
+                .andExpect(jsonPath("$.orders[0].items[0].count").value(expected.orders().get(0).items().get(0).count()));
     }
 
     private Long menu1Id;
@@ -202,12 +199,13 @@ public class OrderControllerTest {
         assertThat(customer).isNotNull();
         assertThat(customer.getEmail()).isEqualTo("newcustomer@test.com");
 
-        List<Order> orders = orderRepository.findAll();
+        // findAll()은 setup()이 만든 주문까지 포함 → 이메일로 좁혀서 검증
+        List<Order> orders = orderRepository.findByCustomerEmail("newcustomer@test.com");
         assertThat(orders).hasSize(1);
         assertThat(orders.get(0).getAddress()).isEqualTo("서울시 강남구");
         assertThat(orders.get(0).getPostcode()).isEqualTo(12345);
 
-        List<OrderItem> orderItems = orderItemRepository.findAll();
+        List<OrderItem> orderItems = orderItemRepository.findByOrderCustomerEmail("newcustomer@test.com");
         assertThat(orderItems).hasSize(2);
     }
 
@@ -244,7 +242,8 @@ public class OrderControllerTest {
                 .count();
         assertThat(customerCount).isEqualTo(1);
 
-        List<Order> orders = orderRepository.findAll();
+        // findAll()은 setup()이 만든 주문까지 포함 → 이메일로 좁혀서 검증
+        List<Order> orders = orderRepository.findByCustomerEmail("existing@test.com");
         assertThat(orders).hasSize(1);
         assertThat(orders.get(0).getCustomer().getId()).isEqualTo(existingCustomer.getId());
     }
@@ -383,7 +382,7 @@ public class OrderControllerTest {
                 .andDo(print())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.resultCode").value("400-1"))
-                .andExpect(jsonPath("$.msg").value("존재하지 않는 메뉴입니다: 999999"));
+                .andExpect(jsonPath("$.message").value("존재하지 않는 메뉴입니다: 999999"));
     }
 
     @Test
@@ -460,7 +459,8 @@ public class OrderControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("주문이 성공적으로 등록되었습니다."));
 
-        List<OrderItem> orderItems = orderItemRepository.findAll();
+        // findAll()은 setup()이 만든 주문 아이템까지 포함 → 이메일로 좁혀서 검증
+        List<OrderItem> orderItems = orderItemRepository.findByOrderCustomerEmail("multi@test.com");
         assertThat(orderItems).hasSize(2);
         assertThat(orderItems).extracting("count")
                 .containsExactlyInAnyOrder(1, 2);
