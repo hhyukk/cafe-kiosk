@@ -3,6 +3,14 @@ spring:
     name: App
   profiles:
     active: dev
+
+  config:
+    import:
+#      # bootRun 또는 Backend/App/ 기준으로 실행할 때
+      - optional:file:.env[.properties]
+#      # IntelliJ Gradle 태스크처럼 프로젝트 루트 기준으로 실행할 때
+#      # (워킹 디렉토리가 cafe-kiosk/ 로 잡히는 경우)
+      - optional:file:Backend/App/.env[.properties]
   output:
     ansi:
       enabled: always
