@@ -1,0 +1,54 @@
+# =====================================================================
+# cafe-kiosk 로컬 개발 인프라
+# 용도: 개발 환경에서 PostgreSQL과 Redis를 로컬에서 띄우기 위한 설정.
+#       실제 서비스 배포에는 사용하지 않는다.
+#
+# 실행 방법 (Backend/App/ 디렉토리에서):
+#   시작: docker-compose up -d
+#   중지: docker-compose down
+#   중지 + 볼륨 삭제(DB 초기화): docker-compose down -v
+#   로그 확인: docker-compose logs -f postgres
+#
+# 환경변수: 같은 폴더의 .env 파일에서 자동으로 읽어온다.
+#   .env.example을 복사해서 .env를 만들고 값을 채운 후 실행할 것.
+# =====================================================================
+
+services:
+
+  # -------------------------------------------------------------------
+  # PostgreSQL 16 — 메인 데이터베이스
+  # 역할: Menu, Order, Customer, OrderItem 등 모든 도메인 데이터 저장.
+  # -------------------------------------------------------------------
+  postgres:
+    image: postgres:16                  # 16 고정 (LTS). 버전 변경 시 Testcontainers도 맞춰야 함
+    container_name: cafe-kiosk-postgres
+    environment:
+      POSTGRES_DB: cafe_kiosk           # 생성할 데이터베이스 이름 (application.yml의 DB_URL과 일치해야 함)
+      POSTGRES_USER: ${DB_USERNAME}     # .env의 DB_USERNAME 값 사용
+      POSTGRES_PASSWORD: ${DB_PASSWORD} # .env의 DB_PASSWORD 값 사용
+    ports:
+      - "5432:5432"                     # 호스트:컨테이너. 로컬 5432 포트로 직접 접속 가능 (DBeaver 등)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Named volume으로 컨테이너를 내려도 데이터가 유지된다.
+      # DB를 완전히 초기화하고 싶으면: docker-compose down -v
+
+  # -------------------------------------------------------------------
+  # Redis 7
+
+  # 현재는 컨테이너만 띄워두고 실제로 사용하지 않는다.
+  # -------------------------------------------------------------------
+  redis:
+    image: redis:7                      # 7 고정 (LTS). Redisson 클라이언트와 호환
+    container_name: cafe-kiosk-redis
+    ports:
+      - "6379:6379"                     # 호스트:컨테이너. redis-cli로 직접 접속 가능
+    # 별도 볼륨 없음 — Redis 데이터는 개발 중 재시작 시 초기화되어도 무방
+
+# -------------------------------------------------------------------
+# Named Volumes
+# postgres_data: 컨테이너 삭제 후에도 DB 데이터를 유지하기 위한 Docker 관리 볼륨.
+#   위치: Docker Desktop > Volumes > cafe-kiosk_postgres_data
+# -------------------------------------------------------------------
+volumes:
+  postgres_data:
