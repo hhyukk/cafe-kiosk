@@ -1,11 +1,10 @@
 package com.back.app;
 
 import com.back.domain.order.menu.entity.Menu;
+import com.back.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
-class AppApplicationTests {
+class AppApplicationTests extends AbstractIntegrationTest {
 
 	@Test
 	void contextLoads() {

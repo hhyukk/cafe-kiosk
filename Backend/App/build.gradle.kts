@@ -41,6 +41,11 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-test-autoconfigure")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.springframework.boot:spring-boot-webmvc-test")
+
+    // Testcontainers — 버전은 Spring Boot BOM이 관리 (Spring Boot 4.0은 Testcontainers 2.x 사용)
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+    testImplementation("org.testcontainers:testcontainers-postgresql")
 }
 
 tasks.withType<Test> {

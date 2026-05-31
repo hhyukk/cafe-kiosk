@@ -3,14 +3,13 @@ package com.back.domain.order.menu.controller;
 import com.back.domain.order.menu.entity.Menu;
 import com.back.domain.order.menu.repository.MenuRepository;
 import com.back.domain.order.menu.service.MenuService;
+import com.back.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.springframework.http.MediaType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,11 +20,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@ActiveProfiles("test")
-@SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-public class MenuControllerTest {
+public class MenuControllerTest extends AbstractIntegrationTest {
     @Autowired
     private MockMvc mvc;
 
@@ -73,7 +70,8 @@ public class MenuControllerTest {
     @Test
     @DisplayName("메뉴 수정, 200-1")
     void t01() throws Exception {
-        int menuId = 2;
+        // PostgreSQL IDENTITY 시퀀스는 롤백 후 되돌아가지 않으므로 실제 저장된 ID를 조회
+        long menuId = menuRepository.findAll().get(1).getId(); // 카페라떼
 
         ResultActions resultActions = mvc
                 .perform(
@@ -84,7 +82,8 @@ public class MenuControllerTest {
                                     "menu_name": "쿨라임 피지오",
                                     "price": 3000,
                                     "img_url": "testImgUrl",
-                                    "category": "피지오"
+                                    "category": "피지오",
+                                    "email": "example@example.com"
                                 }
                                 """)
                 )
@@ -96,12 +95,10 @@ public class MenuControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resultCode").value("200-1"))
                 .andExpect(jsonPath("$.message").value("메뉴를 수정하였습니다."))
-                .andExpect(jsonPath("$.data.menu_id").value(2))
+                .andExpect(jsonPath("$.data.menu_id").value(menuId))
                 .andExpect(jsonPath("$.data.menu_name").value("쿨라임 피지오"))
                 .andExpect(jsonPath("$.data.price").value(3000))
                 .andExpect(jsonPath("$.data.category").value("피지오"));
-
-
     }
 
     @Test
@@ -118,7 +115,8 @@ public class MenuControllerTest {
                                     "menu_name": "쿨라임 피지오",
                                     "price": 3000,
                                     "img_url": "testImgUrl",
-                                    "category": "피지오"
+                                    "category": "피지오",
+                                    "email": "example@example.com"
                                 }
                                 """)
                 )
