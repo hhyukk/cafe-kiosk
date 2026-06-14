@@ -8,6 +8,8 @@ import com.cafekiosk.order.entity.Order;
 import com.cafekiosk.order.repository.OrderRepository;
 import com.cafekiosk.order.entity.OrderItem;
 import com.cafekiosk.order.repository.OrderItemRepository;
+import com.cafekiosk.stock.entity.Stock;
+import com.cafekiosk.stock.repository.StockRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationRunner;
@@ -32,6 +34,7 @@ public class BaseInitData {
     private final MenuRepository menuRepository;
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
+    private final StockRepository stockRepository;
 
     @Bean
     ApplicationRunner baseInitDataApplicationRunner() {
@@ -46,12 +49,15 @@ public class BaseInitData {
 
         Menu menu1 = new Menu("에티오피아 예가체프", "http://localhost:8080/uploads/Ethiopia-Yirgacheffe.jpg", 15000, "커피원두", "example@example.com");
         menuRepository.save(menu1);
+        stockRepository.save(new Stock(menu1, 100));
 
         Menu menu2 = new Menu("콜롬비아 수프리모", "http://localhost:8080/uploads/Colombia Supremo.jpg", 18000, "커피원두", "example@example.com");
         menuRepository.save(menu2);
+        stockRepository.save(new Stock(menu2, 50));
 
         Menu menu3 = new Menu("브라질 산토스", "http://localhost:8080/uploads/Brazil Santos.jpg", 12000, "커피원두", "example@example.com");
         menuRepository.save(menu3);
+        stockRepository.save(new Stock(menu3, 3));
     }
 
 }
