@@ -1,6 +1,7 @@
 package com.cafekiosk.order.dto;
 
 import com.cafekiosk.order.entity.Order;
+import com.cafekiosk.order.entity.OrderStatus;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -8,6 +9,14 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 public class OrderDto {
+
+    // 점주의 주문 상태 변경 요청
+    public record ChangeStatusRequest(
+            @NotNull OrderStatus status
+    ) {
+    }
+
+    public record ChangeStatusResponse(String message) {}
 
     public record CreateRequest(
             @NotBlank @Email String email,
