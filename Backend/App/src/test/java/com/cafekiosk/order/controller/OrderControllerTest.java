@@ -27,6 +27,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -464,5 +465,50 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         assertThat(orderItems).hasSize(2);
         assertThat(orderItems).extracting("count")
                 .containsExactlyInAnyOrder(1, 2);
+    }
+
+    // setup()이 생성한 주문(order@example.com, 초기 상태 CONFIRMED)의 id를 가져온다
+    private Long seededOrderId() {
+        return orderRepository.findByCustomerEmail("order@example.com").get(0).getId();
+    }
+
+    @Test
+    @DisplayName("주문 상태 변경 성공 - CONFIRMED → IN_PROGRESS")
+    void changeStatus_success() throws Exception {
+        Long orderId = seededOrderId();
+
+        mvc.perform(patch("/api/order/{orderId}/status", orderId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\": \"IN_PROGRESS\"}"))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("주문 상태가 변경되었습니다."));
+
+        assertThat(orderRepository.findById(orderId).orElseThrow().getStatus())
+                .isEqualTo(com.cafekiosk.order.entity.OrderStatus.IN_PROGRESS);
+    }
+
+    @Test
+    @DisplayName("주문 상태 변경 실패 - 허용되지 않은 전이는 409 (CONFIRMED → COMPLETED)")
+    void changeStatus_invalidTransition_conflict() throws Exception {
+        Long orderId = seededOrderId();
+
+        mvc.perform(patch("/api/order/{orderId}/status", orderId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\": \"COMPLETED\"}"))
+                .andDo(print())
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.resultCode").value("409-1"));
+    }
+
+    @Test
+    @DisplayName("주문 상태 변경 실패 - 존재하지 않는 주문은 400")
+    void changeStatus_orderNotFound_badRequest() throws Exception {
+        mvc.perform(patch("/api/order/{orderId}/status", 999999L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\": \"IN_PROGRESS\"}"))
+                .andDo(print())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("존재하지 않는 주문입니다: 999999"));
     }
 }
