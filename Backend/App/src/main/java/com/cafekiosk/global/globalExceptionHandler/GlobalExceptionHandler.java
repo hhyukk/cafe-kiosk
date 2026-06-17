@@ -1,6 +1,7 @@
 package com.cafekiosk.global.globalExceptionHandler;
 
 import com.cafekiosk.global.rsData.RsData;
+import com.cafekiosk.order.exception.InvalidOrderStatusTransitionException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -14,11 +15,8 @@ import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
+import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
-import org.springframework.web.bind.annotation.ControllerAdvice;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-
-import static org.springframework.http.HttpStatus.BAD_REQUEST;
 
 @ControllerAdvice
 @RequiredArgsConstructor
@@ -65,6 +63,18 @@ public class GlobalExceptionHandler {
                         ex.getMessage()
                 ),
                 BAD_REQUEST
+        );
+    }
+
+    // 409 : CONFLICT — 현재 주문 상태와 충돌하는 전이 시도
+    @ExceptionHandler(InvalidOrderStatusTransitionException.class)
+    public ResponseEntity<RsData<Void>> handle(InvalidOrderStatusTransitionException ex) {
+        return new ResponseEntity<>(
+                new RsData<>(
+                        "409-1",
+                        ex.getMessage()
+                ),
+                CONFLICT
         );
     }
 
