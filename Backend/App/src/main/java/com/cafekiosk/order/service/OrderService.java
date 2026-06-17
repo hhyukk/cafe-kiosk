@@ -6,6 +6,7 @@ import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
 import com.cafekiosk.order.dto.OrderDto;
 import com.cafekiosk.order.entity.Order;
+import com.cafekiosk.order.entity.OrderStatus;
 import com.cafekiosk.order.repository.OrderRepository;
 import com.cafekiosk.order.entity.OrderItem;
 import com.cafekiosk.order.repository.OrderItemRepository;
@@ -58,6 +59,30 @@ public class OrderService {
             );
             orderItemRepository.save(orderItem);
         }
+    }
+
+    /**
+     * 주문 상태를 변경한다. 상태 전이 규칙 검증은 Order 엔티티의 전이 메서드가 담당하며,
+     * 잘못된 전이는 InvalidOrderStatusTransitionException 으로 차단된다.
+     * 상태 변경은 반드시 이 서비스를 통해서만 이루어진다(컨트롤러 setter 호출 금지).
+     */
+    @Transactional
+    public void changeStatus(Long orderId, OrderStatus next) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "존재하지 않는 주문입니다: " + orderId
+                ));
+
+        switch (next) {
+            case IN_PROGRESS -> order.startPreparing();
+            case READY -> order.markReady();
+            case COMPLETED -> order.complete();
+            case CANCELLED -> order.cancel();
+            default -> throw new IllegalArgumentException(
+                    "직접 전이할 수 없는 상태입니다: " + next
+            );
+        }
+        // 영속 상태 엔티티이므로 트랜잭션 커밋 시 변경 감지로 반영됨
     }
 
     @Transactional(readOnly = true)

@@ -14,6 +14,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -72,5 +74,27 @@ public class OrderController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(
+            summary = "주문 상태 변경 (점주)",
+            description = "점주가 주문 상태를 다음 단계로 전이시킵니다. (IN_PROGRESS / READY / COMPLETED / CANCELLED) "
+                    + "허용되지 않은 전이는 409로 거부됩니다."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "상태 변경 성공"),
+            @ApiResponse(responseCode = "409", description = "허용되지 않은 상태 전이"),
+            @ApiResponse(responseCode = "400", description = "존재하지 않는 주문 또는 잘못된 요청")
+    })
 
+    @PatchMapping("/api/order/{orderId}/status")
+    @Transactional
+    public ResponseEntity<OrderDto.ChangeStatusResponse> changeStatus(
+            @PathVariable Long orderId,
+            @Valid @RequestBody OrderDto.ChangeStatusRequest request) {
+
+        orderService.changeStatus(orderId, request.status());
+
+        return ResponseEntity.ok(
+                new OrderDto.ChangeStatusResponse("주문 상태가 변경되었습니다.")
+        );
+    }
 }
