@@ -84,7 +84,7 @@ public class MenuController {
     @PostMapping //추가기능
     @Transactional
     public ResponseEntity<String> createMenu(
-            @RequestBody CreateMenuRequestDto req
+            @Valid @RequestBody CreateMenuRequestDto req
     ) {
         // 품목 제안 최대 값 10,000,000원 검증
         if (req.getPrice() < 0 || req.getPrice() > 10_000_000) {

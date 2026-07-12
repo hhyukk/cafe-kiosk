@@ -1,13 +1,7 @@
 package com.cafekiosk.global.initData;
 
-import com.cafekiosk.order.entity.Customer;
-import com.cafekiosk.order.repository.CustomerRepository;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
-import com.cafekiosk.order.entity.Order;
-import com.cafekiosk.order.repository.OrderRepository;
-import com.cafekiosk.order.entity.OrderItem;
-import com.cafekiosk.order.repository.OrderItemRepository;
 import com.cafekiosk.stock.entity.Stock;
 import com.cafekiosk.stock.repository.StockRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,9 +13,6 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-
 @Component
 @RequiredArgsConstructor
 @Profile("dev") // dev 프로필에서만 실행
@@ -30,10 +21,7 @@ public class BaseInitData {
     @Lazy
     private BaseInitData self;
 
-    private final CustomerRepository customerRepository;
     private final MenuRepository menuRepository;
-    private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
     private final StockRepository stockRepository;
 
     @Bean
@@ -45,7 +33,10 @@ public class BaseInitData {
 
     @Transactional
     public void work1() {
-        if (customerRepository.count() > 0) return;
+        // 이 메서드가 심는 것은 메뉴/재고다. 따라서 가드도 메뉴를 세야 한다.
+        // 예전엔 customerRepository.count() 를 봤는데, 정작 Customer 를 만들지 않으니
+        // 가드가 항상 0이라 매 기동 재실행됐다 — ddl-auto 를 update 로 바꾸는 순간 메뉴가 무한 증식한다.
+        if (menuRepository.count() > 0) return;
 
         Menu menu1 = new Menu("에티오피아 예가체프", "http://localhost:8080/uploads/Ethiopia-Yirgacheffe.jpg", 15000, "커피원두", "example@example.com");
         menuRepository.save(menu1);
