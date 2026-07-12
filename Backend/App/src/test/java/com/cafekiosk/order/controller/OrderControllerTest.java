@@ -59,6 +59,8 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     private Menu menu1;
     private Menu menu2;
 
+    // 예전엔 @BeforeEach 가 setup() / setUp() 두 개였다(이름만 대소문자 차이).
+    // JUnit 5는 둘 다 실행하고 순서를 보장하지 않아 매 테스트마다 메뉴가 중복 생성됐다 — 하나로 합쳤다.
     @BeforeEach
     void setup() {
         mvc = MockMvcBuilders.webAppContextSetup(context).build();
@@ -70,8 +72,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         // 주문 조회 테스트를 위한 기본 주문 하나 생성
         OrderDto.CreateRequest createRequest = new OrderDto.CreateRequest(
                 "order@example.com",
-                "서울시 강남구 테헤란로",
-                12345,
                 List.of(
                         new OrderDto.OrderItemRequest(menu1.getId(), 2),
                         new OrderDto.OrderItemRequest(menu2.getId(), 1)
@@ -89,8 +89,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         String json = """
                 {
                   "email": "%s",
-                  "address": "서울시 서초구 서초대로",
-                  "postcode": 54321,
                   "items": [
                     { "menuId": %d, "count": 1 },
                     { "menuId": %d, "count": 3 }
@@ -111,7 +109,11 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                 .andExpect(handler().handlerType(OrderController.class))
                 .andExpect(handler().methodName("createOrder"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("주문이 성공적으로 등록되었습니다."));
+                .andExpect(jsonPath("$.message").value("주문이 성공적으로 등록되었습니다."))
+                // 손님은 대기번호를 받아간다
+                .andExpect(jsonPath("$.orderNumber").isNotEmpty())
+                // 아메리카노(3000) x1 + 카페라떼(4000) x3
+                .andExpect(jsonPath("$.totalPrice").value(15000));
 
         // DB에 주문/주문상품이 잘 저장되었는지 간단 검증
         assertThat(orderRepository.findByCustomerEmail(email)).hasSize(1);
@@ -147,25 +149,11 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(expected.email()))
                 .andExpect(jsonPath("$.orders.length()").value(expected.orders().size()))
-                .andExpect(jsonPath("$.orders[0].address").value(expected.orders().get(0).address()))
-                .andExpect(jsonPath("$.orders[0].postcode").value(expected.orders().get(0).postcode()))
+                .andExpect(jsonPath("$.orders[0].orderNumber").value(expected.orders().get(0).orderNumber()))
+                .andExpect(jsonPath("$.orders[0].totalPrice").value(expected.orders().get(0).totalPrice()))
                 .andExpect(jsonPath("$.orders[0].items[0].menuName").value(expected.orders().get(0).items().get(0).menuName()))
-                .andExpect(jsonPath("$.orders[0].items[0].menuPrice").value(expected.orders().get(0).items().get(0).menuPrice()))
+                .andExpect(jsonPath("$.orders[0].items[0].orderPrice").value(expected.orders().get(0).items().get(0).orderPrice()))
                 .andExpect(jsonPath("$.orders[0].items[0].count").value(expected.orders().get(0).items().get(0).count()));
-    }
-
-    private Long menu1Id;
-    private Long menu2Id;
-
-    @BeforeEach
-    void setUp() {
-        Menu menu1 = menuRepository.save(
-                new Menu("아메리카노", "tmpImgURL", 4500, "음료", "example@example.com"));
-        Menu menu2 = menuRepository.save(
-                new Menu("카페라떼", "tmpImgURL", 5000, "음료", "example@example.com"));
-
-        menu1Id = menu1.getId();
-        menu2Id = menu2.getId();
     }
 
     @Test
@@ -174,8 +162,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         String requestBody = String.format("""
                 {
                     "email": "newcustomer@test.com",
-                    "address": "서울시 강남구",
-                    "postcode": 12345,
                     "items": [
                         {
                             "menuId": %d,
@@ -187,7 +173,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                         }
                     ]
                 }
-                """, menu1Id, menu2Id);
+                """, menu1.getId(), menu2.getId());
 
         mvc.perform(post("/api/order")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -203,8 +189,9 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         // findAll()은 setup()이 만든 주문까지 포함 → 이메일로 좁혀서 검증
         List<Order> orders = orderRepository.findByCustomerEmail("newcustomer@test.com");
         assertThat(orders).hasSize(1);
-        assertThat(orders.get(0).getAddress()).isEqualTo("서울시 강남구");
-        assertThat(orders.get(0).getPostcode()).isEqualTo(12345);
+        assertThat(orders.get(0).getOrderNumber()).isNotBlank();
+        // 아메리카노(3000) x2 + 카페라떼(4000) x1
+        assertThat(orders.get(0).getTotalPrice()).isEqualTo(10000);
 
         List<OrderItem> orderItems = orderItemRepository.findByOrderCustomerEmail("newcustomer@test.com");
         assertThat(orderItems).hasSize(2);
@@ -219,8 +206,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         String requestBody = String.format("""
                 {
                     "email": "existing@test.com",
-                    "address": "서울시 송파구",
-                    "postcode": 54321,
                     "items": [
                         {
                             "menuId": %d,
@@ -228,7 +213,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                         }
                     ]
                 }
-                """, menu1Id);
+                """, menu1.getId());
 
         mvc.perform(post("/api/order")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -254,8 +239,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     void t3() throws Exception {
         String requestBody = String.format("""
                 {
-                    "address": "서울시 강남구",
-                    "postcode": 12345,
                     "items": [
                         {
                             "menuId": %d,
@@ -263,7 +246,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                         }
                     ]
                 }
-                """, menu1Id);
+                """, menu1.getId());
 
         mvc.perform(post("/api/order")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -278,8 +261,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         String requestBody = String.format("""
                 {
                     "email": "invalidemail",
-                    "address": "서울시 강남구",
-                    "postcode": 12345,
                     "items": [
                         {
                             "menuId": %d,
@@ -287,7 +268,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                         }
                     ]
                 }
-                """, menu1Id);
+                """, menu1.getId());
 
         mvc.perform(post("/api/order")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -297,49 +278,29 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("주문 생성 실패 - 주소 누락")
-    void t5() throws Exception {
-        String requestBody = String.format("""
-                {
-                    "email": "test@test.com",
-                    "postcode": 12345,
-                    "items": [
-                        {
-                            "menuId": %d,
-                            "count": 2
-                        }
-                    ]
-                }
-                """, menu1Id);
+    @DisplayName("가격 스냅샷 - 메뉴 가격을 바꿔도 과거 주문 금액은 변하지 않는다")
+    void 가격스냅샷_메뉴가격변경이_과거주문에_소급되지_않는다() {
+        // given — setup()이 심은 주문: 아메리카노(3000) x2 + 카페라떼(4000) x1 = 10,000원
+        String email = "order@example.com";
 
-        mvc.perform(post("/api/order")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
-                .andDo(print())
-                .andExpect(status().isBadRequest());
-    }
+        OrderDto.OrderListResponse 주문직후 = orderService.getOrderList(email);
+        assertThat(주문직후.orders().get(0).totalPrice()).isEqualTo(10000);
+        assertThat(주문직후.orders().get(0).items())
+                .extracting(OrderDto.OrderItemDTO::orderPrice)
+                .containsExactly(3000, 4000);
 
-    @Test
-    @DisplayName("주문 생성 실패 - 우편번호 누락")
-    void t6() throws Exception {
-        String requestBody = String.format("""
-                {
-                    "email": "test@test.com",
-                    "address": "서울시 강남구",
-                    "items": [
-                        {
-                            "menuId": %d,
-                            "count": 2
-                        }
-                    ]
-                }
-                """, menu1Id);
+        // when — 점주가 메뉴 가격을 대폭 인상한다
+        menu1.modify("아메리카노", 9000, "img1", "커피");
+        menu2.modify("카페라떼", 9000, "img2", "커피");
+        menuRepository.saveAll(List.of(menu1, menu2));
 
-        mvc.perform(post("/api/order")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody))
-                .andDo(print())
-                .andExpect(status().isBadRequest());
+        // then — 이미 지나간 주문의 금액은 그대로여야 한다.
+        // 스냅샷이 없다면 여기서 27,000원(9000x2 + 9000x1)이 나온다.
+        OrderDto.OrderListResponse 가격인상후 = orderService.getOrderList(email);
+        assertThat(가격인상후.orders().get(0).totalPrice()).isEqualTo(10000);
+        assertThat(가격인상후.orders().get(0).items())
+                .extracting(OrderDto.OrderItemDTO::orderPrice)
+                .containsExactly(3000, 4000);
     }
 
     @Test
@@ -347,9 +308,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     void t7() throws Exception {
         String requestBody = """
                 {
-                    "email": "test@test.com",
-                    "address": "서울시 강남구",
-                    "postcode": 12345
+                    "email": "test@test.com"
                 }
                 """;
 
@@ -366,8 +325,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         String requestBody = """
                 {
                     "email": "test@test.com",
-                    "address": "서울시 강남구",
-                    "postcode": 12345,
                     "items": [
                         {
                             "menuId": 999999,
@@ -392,8 +349,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         String requestBody = """
                 {
                     "email": "test@test.com",
-                    "address": "서울시 강남구",
-                    "postcode": 12345,
                     "items": [
                         {
                             "count": 2
@@ -415,15 +370,13 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         String requestBody = String.format("""
                 {
                     "email": "test@test.com",
-                    "address": "서울시 강남구",
-                    "postcode": 12345,
                     "items": [
                         {
                             "menuId": %d
                         }
                     ]
                 }
-                """, menu1Id);
+                """, menu1.getId());
 
         mvc.perform(post("/api/order")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -438,8 +391,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         String requestBody = String.format("""
                 {
                     "email": "multi@test.com",
-                    "address": "서울시 종로구",
-                    "postcode": 11111,
                     "items": [
                         {
                             "menuId": %d,
@@ -451,7 +402,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                         }
                     ]
                 }
-                """, menu1Id, menu2Id);
+                """, menu1.getId(), menu2.getId());
 
         mvc.perform(post("/api/order")
                         .contentType(MediaType.APPLICATION_JSON)

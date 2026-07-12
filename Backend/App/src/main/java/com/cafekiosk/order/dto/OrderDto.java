@@ -20,8 +20,6 @@ public class OrderDto {
 
     public record CreateRequest(
             @NotBlank @Email String email,
-            @NotBlank String address,
-            @NotNull Integer postcode,
             @NotNull List<OrderItemRequest> items
     ) {
     }
@@ -32,7 +30,17 @@ public class OrderDto {
     ) {
     }
 
-    public record CreateResponse(String message) {}
+    // orderNumber = 손님이 받아가는 대기번호
+    public record CreateResponse(
+            String message,
+            String orderNumber,
+            int totalPrice
+    ) {
+        /** 주문이 성립하지 않은 경우 — 대기번호도 금액도 없다. */
+        public static CreateResponse rejected(String message) {
+            return new CreateResponse(message, null, 0);
+        }
+    }
 
     public record OrderListRequest(
             @NotNull String email
@@ -40,9 +48,10 @@ public class OrderDto {
 
     }
 
+    // orderPrice = 주문 시점 가격 스냅샷. 현재 메뉴 가격이 아니다.
     public record OrderItemDTO(
             @NotNull String menuName,
-            @NotNull int menuPrice,
+            @NotNull int orderPrice,
             @NotNull int count
     ){
 
@@ -55,10 +64,11 @@ public class OrderDto {
     ) { // 이메일별 주문 묶음을 반환한다
     }
 
-    // 개별 주문(주소/우편번호별) 요약 + 해당 주문의 아이템 목록
+    // 개별 주문(대기번호별) 요약 + 해당 주문의 아이템 목록
+    // orderId/status 노출은 Phase 1에서 추가한다.
     public record OrderSummary(
-            @NotNull String address,
-            @NotNull int postcode,
+            @NotNull String orderNumber,
+            @NotNull int totalPrice,
             @NotNull List<OrderItemDTO> items
     ) {
     }

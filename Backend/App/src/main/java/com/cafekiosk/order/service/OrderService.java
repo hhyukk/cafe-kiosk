@@ -32,19 +32,17 @@ public class OrderService {
     private final OrderItemRepository orderItemRepository;
 
     @Transactional
-    public void createOrder(OrderDto.CreateRequest request) {
+    public OrderDto.CreateResponse createOrder(OrderDto.CreateRequest request) {
         Customer customer = customerRepository.findByEmail(request.email())
                 .orElseGet(() -> customerRepository.save(
                         new Customer(request.email())
                 ));
 
-        Order order = new Order(
-                customer,
-                LocalDateTime.now(),
-                request.address(),
-                request.postcode()
-        );
+        Order order = new Order(customer, LocalDateTime.now());
+
+        // 대기번호는 PK에서 파생되므로 채번(INSERT) 이후에야 발급할 수 있다
         orderRepository.save(order);
+        order.assignOrderNumber();
 
         for (OrderDto.OrderItemRequest itemRequest : request.items()) {
             Menu menu = menuRepository.findById(itemRequest.menuId())
@@ -52,13 +50,17 @@ public class OrderService {
                             "존재하지 않는 메뉴입니다: " + itemRequest.menuId()
                     ));
 
-            OrderItem orderItem = new OrderItem(
-                    order,
-                    menu,
-                    itemRequest.count()
-            );
+            // 가격 스냅샷은 OrderItem 생성자가, 총액 합산은 Order 가 책임진다
+            OrderItem orderItem = new OrderItem(order, menu, itemRequest.count());
+            order.addOrderItem(orderItem);
             orderItemRepository.save(orderItem);
         }
+
+        return new OrderDto.CreateResponse(
+                "주문이 성공적으로 등록되었습니다.",
+                order.getOrderNumber(),
+                order.getTotalPrice()
+        );
     }
 
     /**
@@ -95,7 +97,7 @@ public class OrderService {
             return new OrderDto.OrderListResponse(email, List.of());
         }
 
-        // 주문(주소/우편번호)별로 OrderItemDTO 리스트를 그룹핑
+        // 주문(대기번호)별로 OrderItemDTO 리스트를 그룹핑
         Map<Order, List<OrderDto.OrderItemDTO>> orderMap = new LinkedHashMap<>();
 
         for (OrderItem orderItem : orderItemList) {
@@ -104,7 +106,9 @@ public class OrderService {
                     .computeIfAbsent(order, o -> new ArrayList<>())
                     .add(new OrderDto.OrderItemDTO(
                             orderItem.getMenu().getMenuName(),
-                            orderItem.getMenu().getMenuPrice(),
+                            // 현재 메뉴 가격이 아니라 주문 시점 스냅샷을 읽는다.
+                            // 여기서 menu.getMenuPrice() 를 읽으면 과거 주문 금액이 소급 변경된다.
+                            orderItem.getOrderPrice(),
                             orderItem.getCount()
                     ));
         }
@@ -115,8 +119,8 @@ public class OrderService {
             List<OrderDto.OrderItemDTO> items = entry.getValue();
 
             summaries.add(new OrderDto.OrderSummary(
-                    order.getAddress(),
-                    order.getPostcode(),
+                    order.getOrderNumber(),
+                    order.getTotalPrice(),
                     items
             ));
         }

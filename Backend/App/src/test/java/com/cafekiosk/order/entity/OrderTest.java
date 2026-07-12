@@ -17,7 +17,7 @@ class OrderTest {
 
     private Order newOrder() {
         Customer customer = new Customer("test@example.com");
-        return new Order(customer, LocalDateTime.now(), "서울시 강남구", 12345);
+        return new Order(customer, LocalDateTime.now());
     }
 
     @Test
