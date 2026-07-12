@@ -28,10 +28,10 @@ public class OrderController {
 
     @Operation(
             summary = "주문 등록",
-            description = "사용자 이메일과 선택한 메뉴 목록을 받아 새로운 주문을 생성합니다. 주문 정보는 시스템에 영구 저장됩니다."
+            description = "사용자 이메일과 선택한 메뉴 목록을 받아 새로운 주문을 생성하고, 손님이 받아갈 대기번호를 반환합니다."
     )
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200-1", description = "주문 완료 (성공 메시지 반환)",
+            @ApiResponse(responseCode = "200-1", description = "주문 완료 (대기번호 + 주문 금액 반환)",
                     content = @Content(schema = @Schema(implementation = OrderDto.CreateResponse.class))),
             @ApiResponse(responseCode = "400-1", description = "요청 데이터 유효성 검사 실패")
     })
@@ -49,14 +49,10 @@ public class OrderController {
         if (totalCount <= 0 || totalCount > 100) {
             return ResponseEntity
                     .badRequest()
-                    .body(new OrderDto.CreateResponse("주문 수량은 1개 이상 100개 이하만 가능합니다."));
+                    .body(OrderDto.CreateResponse.rejected("주문 수량은 1개 이상 100개 이하만 가능합니다."));
         }
 
-        orderService.createOrder(request);
-
-        return ResponseEntity.ok(
-                new OrderDto.CreateResponse("주문이 성공적으로 등록되었습니다.")
-        );
+        return ResponseEntity.ok(orderService.createOrder(request));
     }
 
     @PostMapping("/api/order/list")

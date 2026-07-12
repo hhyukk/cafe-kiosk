@@ -5,7 +5,6 @@
  type Product = {
    id: string;
    name: string;
-   subtitle?: string;
    category?: string;
    price: number;
    img_url?: string;
@@ -22,11 +21,12 @@
 type OrderHistory = {
   email: string;
   orders: Array<{
-    address: string;
-    postcode: number;
+    orderNumber: string;
+    totalPrice: number;
     items: Array<{
       menuName: string;
-      menuPrice: number;
+      // 주문 시점 가격 스냅샷. 현재 메뉴 가격이 아니다.
+      orderPrice: number;
       count: number;
     }>;
   }>;
@@ -66,8 +66,6 @@ export default function Home() {
 
   const [orderForm, setOrderForm] = useState({
     email: "",
-    address: "",
-    postalCode: "",
   });
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyEmail, setHistoryEmail] = useState("");
@@ -166,21 +164,11 @@ export default function Home() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  const isValidPostcode = (postcode: string) => {
-    // 숫자 5자리 검사
-    return /^\d{5}$/.test(postcode);
-  };
-
   const handleCheckout = async () => {
     if (selectedItems.length === 0) return;
 
     if (!orderForm.email || !isValidEmail(orderForm.email)) {
       alert("유효한 이메일 주소를 입력해주세요.");
-      return;
-    }
-
-    if (!orderForm.postalCode || !isValidPostcode(orderForm.postalCode)) {
-      alert("우편번호는 숫자 5자리로 입력해주세요.");
       return;
     }
 
@@ -193,8 +181,6 @@ export default function Home() {
         },
         body: JSON.stringify({
           email: orderForm.email,
-          address: orderForm.address,
-          postcode: parseInt(orderForm.postalCode, 10),
           items: selectedItems.map((item) => ({
             menuId: Number(item.id),
             count: cart[item.id],
@@ -203,11 +189,11 @@ export default function Home() {
       });
 
       if (response.ok) {
+        // 손님은 대기번호를 받아간다. 전용 주문 완료 화면은 Phase 1에서 만든다.
         const data = await response.json();
-        // 성공 응답은 빈 객체 {}
-        alert("주문이 완료되었습니다");
+        alert(`주문이 완료되었습니다.\n대기번호 ${data.orderNumber}번`);
         setCart({});
-        setOrderForm({ email: "", address: "", postalCode: "" });
+        setOrderForm({ email: "" });
       } else {
         const error = await response.json();
         alert(error.message || "주문 처리 중 오류가 발생했습니다.");
@@ -528,9 +514,9 @@ export default function Home() {
                             <div className="text-sm font-semibold text-slate-800">
                               {product.name}
                             </div>
-                            {(product.subtitle || product.category) && (
+                            {product.category && (
                                 <div className="text-xs text-slate-500">
-                                  {product.subtitle || product.category}
+                                  {product.category}
                                 </div>
                             )}
                           </td>
@@ -616,40 +602,10 @@ export default function Home() {
                     placeholder="your@email.com"
                 />
               </label>
-              <label className="block space-y-1">
-                <span className="text-slate-600">주소</span>
-                <input
-                    type="text"
-                    value={orderForm.address}
-                    onChange={(e) =>
-                        setOrderForm((prev) => ({ ...prev, address: e.target.value }))
-                    }
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-800 outline-none ring-emerald-500/60 transition focus:ring"
-                    placeholder="주소를 입력하세요"
-                />
-              </label>
-              <label className="block space-y-1">
-                <span className="text-slate-600">우편번호</span>
-                <input
-                    type="text"
-                    value={orderForm.postalCode}
-                    onChange={(e) => {
-                      // 숫자만 입력 허용
-                      const value = e.target.value.replace(/\D/g, "");
-                      setOrderForm((prev) => ({
-                        ...prev,
-                        postalCode: value,
-                      }));
-                    }}
-                    maxLength={5}
-                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-800 outline-none ring-emerald-500/60 transition focus:ring"
-                    placeholder="00000"
-                />
-              </label>
             </div>
 
             <p className="mt-4 text-xs text-slate-500">
-              당일 오후 2시 이후의 주문은 다음 날 배송을 시작합니다.
+              결제 후 대기번호를 받아 카운터에서 음료를 받아가세요.
             </p>
 
             <div className="mt-4 flex items-center justify-between rounded-md bg-white px-3 py-2 text-sm shadow-inner">
@@ -921,11 +877,10 @@ export default function Home() {
                                   className="rounded-md border border-slate-200 bg-white"
                               >
                                 <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2 text-xs text-slate-600">
-                          <span>
-                            배송지: {order.address}{" "}
-                            {order.postcode ? `(${order.postcode})` : ""}
+                          <span className="font-semibold text-slate-800">
+                            대기번호 {order.orderNumber}
                           </span>
-                                  <span>주문 #{orderIdx + 1}</span>
+                                  <span>{formatPrice(order.totalPrice)}</span>
                                 </div>
                                 <table className="w-full text-left text-xs">
                                   <thead className="bg-slate-100 text-slate-600">
@@ -944,7 +899,7 @@ export default function Home() {
                                       <tr key={idx}>
                                         <td className="px-3 py-2">{item.menuName}</td>
                                         <td className="px-3 py-2 text-right">
-                                          {formatPrice(item.menuPrice)}
+                                          {formatPrice(item.orderPrice)}
                                         </td>
                                         <td className="px-3 py-2 text-center">
                                           x{item.count}

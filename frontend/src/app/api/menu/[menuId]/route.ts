@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Next.js 16부터 라우트 핸들러의 params 는 Promise 다.
 export async function DELETE(
   request: NextRequest,
-  context: { params: { menuId?: string } }
+  context: { params: Promise<{ menuId: string }> }
 ) {
   try {
     // Next context 및 URL 양쪽에서 menuId 추출 (혹시 context 전달이 안 되는 경우 대비)
-    let menuId = context.params?.menuId;
+    let menuId: string | undefined = (await context.params)?.menuId;
     if (!menuId) {
       const segments = request.nextUrl.pathname.split("/").filter(Boolean);
       menuId = segments[segments.length - 1];
@@ -77,10 +78,10 @@ export async function DELETE(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: { menuId?: string } }
+  context: { params: Promise<{ menuId: string }> }
 ) {
   try {
-    let menuId = context.params?.menuId;
+    let menuId: string | undefined = (await context.params)?.menuId;
     if (!menuId) {
       const segments = request.nextUrl.pathname.split("/").filter(Boolean);
       menuId = segments[segments.length - 1];
