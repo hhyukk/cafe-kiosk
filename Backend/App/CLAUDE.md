@@ -5,13 +5,15 @@ Spring Boot 4.0.0 / Java 21 / PostgreSQL 16 / JPA / Lombok.
 
 포매터·린터 설정은 없다 (Checkstyle/Spotless 미도입). 주변 코드 스타일에 맞춘다.
 
+제품 방향과 로드맵은 루트의 [`docs/PRODUCT.md`](../../docs/PRODUCT.md)에 있다. 배송몰 시절의 잔재(`Order.address`/`postcode`)는 **Phase 0에서 제거했다** — 새 코드에 배송 개념을 넣지 않는다. 손님은 `Order.orderNumber`(대기번호)를 받아간다.
+
 ## 패키지 구조 — 레이어별이 아니라 기능(feature)별
 
 ```
 com.cafekiosk
 ├── menu/     controller · service · repository · entity · dto
 ├── order/    controller · service · repository · entity · dto · exception
-├── stock/    entity · repository        (service/controller 아직 없음)
+├── stock/    entity · repository        (service/controller 없음 — 아래 참고)
 ├── file/     controller
 └── global/   횡단 관심사만
       ├── config/WebConfig
@@ -24,6 +26,14 @@ com.cafekiosk
 
 새 도메인을 추가할 땐 이 패턴을 따른다 — 최상위에 feature 패키지를 만들고 그 안에 레이어를 둔다. 여러 feature가 공유하는 것만 `global/`로 간다.
 
+## ⚠️ `stock/`은 아직 죽은 도메인이다
+
+`Stock` 엔티티와 리포지토리는 있지만 **`OrderService`가 `Stock`을 한 번도 참조하지 않는다.** 그래서 **재고가 0이어도 주문이 무한히 들어간다.** 감소·증가 메서드조차 없다.
+
+이건 미완성이지 설계 의도가 아니다. **재고 차감은 Phase 2에서 `OrderService`가 하게 된다** — 그때 `Stock.decrease(int)`가 추가되고, 재고 부족은 `OutOfStockException` → `409`가 된다. 그리고 Phase 3에서 이 차감 로직이 **동시성 제어(비관적 락 → 낙관적 락 → Redisson 분산 락)의 무대**가 된다. 이게 이 프로젝트의 목적지다.
+
+`docker-compose.yml`의 Redis도 그때 처음 쓰인다. 지금은 컨테이너만 떠 있고 `build.gradle.kts`에 의존성조차 없다.
+
 ## 응답 · 예외
 
 **`RsData<T>`** (`global/rsData/RsData`) — `record RsData<T>(String resultCode, String message, T data)`. 신규 API 응답은 이걸로 감싼다.
@@ -33,13 +43,27 @@ com.cafekiosk
 **예외 → HTTP 매핑은 `GlobalExceptionHandler`에서** 한다. 컨트롤러에서 try/catch로 상태코드를 만들지 않는다.
 예: `InvalidOrderStatusTransitionException` → `409 CONFLICT`.
 
-## 상태 머신은 엔티티 안에
+## 불변식은 엔티티가 소유한다
 
 주문 상태 전이 규칙은 `Order` 엔티티가 소유한다 — `startPreparing()` / `markReady()` / `complete()` / `cancel()`. 잘못된 전이면 엔티티가 `InvalidOrderStatusTransitionException`을 던진다.
 
 전이 규칙을 서비스 레이어로 빼지 말 것. 서비스는 엔티티를 조회해서 위 메서드를 호출하기만 한다.
 
+**금액도 마찬가지다.** 주문 총액은 `Order.addOrderItem()`으로만 늘어나고, 가격 스냅샷은 `OrderItem` 생성자가 메뉴에서 직접 복사한다. 서비스가 `totalPrice += price * count`를 계산하거나 호출자가 스냅샷 가격을 넘겨주는 식으로 짜지 않는다 — 총액이 아이템과 어긋날 수 있는 경로 자체를 없애는 게 목적이다.
+
+**대기번호(`Order.orderNumber`)는 PK에서 파생한다** — `assignOrderNumber()`를 INSERT 이후에 호출한다. PK는 DB가 채번하므로 전역 유일하고 단조 증가한다. "오늘 주문 수 + 1" 같은 방식으로 바꾸지 말 것. 조회와 삽입 사이에 번호가 겹치는 경쟁이 생기는데, 동시성은 Phase 3에서 **재고**를 대상으로 의도적으로 다룰 주제이지 대기번호에서 실수로 만들 문제가 아니다.
+
+**이 원칙은 상태 전이에만 해당하는 게 아니라 이 레포의 설계 규칙이다.** Phase 2에서 추가될 `Stock.decrease(int)`도 마찬가지로 **엔티티가 스스로 재고 부족을 판단해서 던진다.** 서비스가 `if (stock.getQuantity() < count)`를 검사하는 식으로 짜지 않는다.
+
 `OrderStatus`: `PENDING`(예약, 미사용) → `CONFIRMED` → `IN_PROGRESS` → `READY` → `COMPLETED`, 그리고 `CANCELLED`.
+
+> `CONFIRMED`는 "결제까지 끝난 상태"로 정의한다. **실결제(PG) 연동은 의도적으로 스코프 아웃했다** — 이유는 `docs/PRODUCT.md` 참고.
+
+## ⚠️ 주문 조회 응답에 아직 상태가 없다
+
+상태를 **바꾸는** API는 있는데(`PATCH /api/order/{orderId}/status`), **읽는** 경로가 없다. 주문 조회 응답(`OrderDto.OrderSummary`)은 Phase 0에서 `orderNumber`·`totalPrice`까지는 채웠지만 **`orderId`·`status`·`orderTime`이 여전히 빠져 있다.** 점주용 전체 주문 목록 API도 없다.
+
+Phase 1에서 채운다. 그 전까지 주방 화면은 만들 수 없다.
 
 ## ⚠️ dev 프로필은 DB를 매번 초기화한다
 
@@ -59,6 +83,12 @@ com.cafekiosk
 ```bash
 ./gradlew test    # Docker 데몬이 떠 있어야 한다 (Testcontainers)
 ```
+
+`OrderControllerTest`에 있던 **`@BeforeEach` 두 개**(`setup()` / `setUp()` — 이름만 대소문자 차이)는 Phase 0에서 하나로 합쳤다. JUnit 5는 둘 다 실행하고 순서를 보장하지 않아 매 테스트마다 메뉴가 중복 생성되고 있었다.
+
+**가격 스냅샷 테스트**(`OrderControllerTest`)는 이 레포의 회귀 방지선이다 — 메뉴 가격을 올린 뒤 과거 주문 금액이 그대로인지 확인한다. `getOrderList`가 `orderItem.getOrderPrice()` 대신 `getMenu().getMenuPrice()`를 읽는 순간 이 테스트가 잡아낸다.
+
+Phase 3에서 쓸 **동시성 테스트**는 `ExecutorService`로 서비스를 직접 호출한다(MockMvc를 거치지 않는다). `AbstractIntegrationTest`가 `@AutoConfigureMockMvc`를 베이스에 두지 않는 이유가 이것이다.
 
 ## API 문서
 
