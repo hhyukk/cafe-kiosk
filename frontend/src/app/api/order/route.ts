@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     // 요청 데이터 검증 (백엔드 OrderDto.CreateRequest 기준)
-    if (!body.email || !body.address || body.postcode === undefined) {
+    if (!body.email) {
       return NextResponse.json(
         { message: "고객 정보가 올바르지 않습니다." },
         { status: 400 }
@@ -41,8 +41,6 @@ export async function POST(request: NextRequest) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: body.email,
-        address: body.address,
-        postcode: body.postcode,
         items: body.items.map((item: any) => ({
           menuId: item.menuId,
           count: item.count,
