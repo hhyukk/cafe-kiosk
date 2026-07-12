@@ -2,5 +2,6 @@
 .idea/
 
 ### Claude Code ###
+# 개인 설정(.claude/)은 계속 무시.
+# CLAUDE.md는 팀 공용 컨벤션 문서라 추적한다.
 .claude/
-CLAUDE.md
