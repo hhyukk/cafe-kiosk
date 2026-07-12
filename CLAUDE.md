@@ -1,6 +1,28 @@
 # cafe-kiosk
 
-카페 키오스크 프로젝트. 백엔드(Spring Boot)와 프론트엔드(Next.js)가 한 레포에 있다.
+**매장 카페 키오스크.** 손님이 키오스크에서 주문하면 대기번호를 받고, 그 주문이 주방 화면으로 흘러가고, 재고가 실제로 줄어든다. 백엔드(Spring Boot)와 프론트엔드(Next.js)가 한 레포에 있다.
+
+이 레포의 진짜 주제는 **재고 동시성 제어**다 — 마지막 한 잔을 두 손님이 동시에 누르면 어떻게 되는가. 키오스크는 그 문제가 자연스럽게 발생하는 무대다. 학습 프로젝트다.
+
+**제품 방향과 로드맵은 [`docs/PRODUCT.md`](docs/PRODUCT.md)에 있다.** 기능을 추가하거나 설계를 바꾸기 전에 읽는다.
+
+## ⚠️ 이 레포는 배송 쇼핑몰이 **아니다**
+
+부트캠프 팀 프로젝트 시절의 배송몰 잔재(주소·우편번호, "다음 날 배송을 시작합니다" 문구)는 **Phase 0에서 제거했다.** 새 코드에 배송/주소 개념을 넣지 않는다. 손님은 매장에서 **대기번호**를 받아간다.
+
+## 현위치
+
+```
+Phase 0  정체성 정리 + 결함 청산    ✅ 완료
+Phase 1  키오스크 루프 완성 — 주방·관리자 화면 분리, Spring Security  ← 지금 여기
+Phase 2  재고를 주문에 연결
+Phase 3  동시성 ★ 이 프로젝트의 목적지
+Phase 4  배포 — Flyway, AWS
+```
+
+각 Phase의 내용과 완료 기준은 `docs/PRODUCT.md`에 있다.
+
+**Phase 0에서 확정된 것** — `Order.orderNumber`(대기번호, PK에서 파생), `Order.totalPrice`, `OrderItem.orderPrice`(주문 시점 가격 스냅샷). 총액 합산은 `Order.addOrderItem()`이, 가격 스냅샷은 `OrderItem` 생성자가 소유한다. **주문 금액을 서비스에서 직접 계산하지 않는다.**
 
 ## 레포 지도
 
@@ -8,11 +30,12 @@
 | --- | --- |
 | `Backend/App/` | Spring Boot 4 / Java 21 API 서버 (8080). **Gradle 루트가 여기다** |
 | `frontend/` | Next.js 16 App Router 키오스크 UI (3000) |
+| `docs/PRODUCT.md` | 제품 기획 · 로드맵 |
 | `.github/` | CI + PR / 이슈 템플릿 |
 
-메뉴 이미지는 `/uploads/**`로 서빙되는데 실제 파일은 두 군데에 있다 — 커밋된 시드 이미지는 `Backend/App/src/main/resources/static/uploads/`(클래스패스), 런타임에 업로드된 파일은 `Backend/App/uploads/`(gitignore). `WebConfig`가 두 위치를 함께 서빙한다.
+**각 디렉토리에 스택별 `CLAUDE.md`가 따로 있다. 백엔드/프론트 작업 시 그쪽을 먼저 읽을 것.**
 
-각 디렉토리에 스택별 `CLAUDE.md`가 따로 있다. 백엔드/프론트 작업 시 그쪽을 참고할 것.
+메뉴 이미지는 `/uploads/**`로 서빙되는데 실제 파일은 두 군데에 있다 — 커밋된 시드 이미지는 `Backend/App/src/main/resources/static/uploads/`(클래스패스), 런타임에 업로드된 파일은 `Backend/App/uploads/`(gitignore). `WebConfig`가 두 위치를 함께 서빙한다.
 
 ## ⚠️ Gradle 루트는 레포 루트가 아니다
 
@@ -27,7 +50,7 @@
 # 1) 환경변수 — .env.example 복사 후 DB_PASSWORD 채우기
 cd Backend/App && cp .env.example .env
 
-# 2) 인프라 (PostgreSQL 16, Redis 7 — Redis는 아직 미사용)
+# 2) 인프라 (PostgreSQL 16, Redis 7 — Redis는 Phase 3에서 처음 쓰인다)
 docker compose up -d
 
 # 3) 백엔드 (8080)
@@ -38,6 +61,18 @@ cd ../../frontend && npm run dev
 ```
 
 - API 문서: http://localhost:8080/swagger-ui.html
+
+## 알려진 결함 — 고치기 전에 알고 있을 것
+
+아래는 **아직 남아 있는** 결함이다. 작업하다 여기를 지나가면 겸사겸사 고치고, **새 코드에서 이 패턴을 따라하지 않는다.**
+
+| 결함 | 위치 | 청산 시점 |
+| --- | --- | --- |
+| **재고가 주문과 연결돼 있지 않다** — `OrderService`가 `Stock`을 참조조차 안 해서 **재고가 0이어도 무한히 주문된다** | `order/service/OrderService.java` | Phase 2 |
+| **인가가 요청 본문의 이메일 문자열 비교뿐** — 이메일만 알면 남의 메뉴를 수정·삭제할 수 있다. 주문 상태 변경 API는 완전 공개다 | `menu/service/MenuService.java` | Phase 1 |
+| `localhost:8080` **9곳 하드코딩** | 프론트 전역 | Phase 4 |
+
+**Phase 0에서 청산 완료** — `createMenu`의 `@Valid` 누락, `OrderControllerTest`의 `@BeforeEach` 두 개(`setup`/`setUp`), `BaseInitData` 가드가 Customer를 세던 문제, `starter-validation` 중복 선언, 가격 스냅샷 부재, 죽은 mock 라우트(`api/products`).
 
 ## 컨벤션
 
@@ -60,4 +95,4 @@ test: OrderControllerTest AbstractIntegrationTest 상속으로 전환
 
 ## CI
 
-`.github/workflows/ci.yml` — main/develop 대상 PR과 push에서 `./gradlew test --no-daemon`만 돌린다. **프론트엔드는 CI에서 검증되지 않으므로** FE 변경은 로컬에서 직접 확인해야 한다.
+`.github/workflows/ci.yml` — main/develop 대상 PR과 push에서 `./gradlew test --no-daemon`만 돌린다. **프론트엔드는 CI에서 검증되지 않으므로**(lint조차 안 돈다) FE 변경은 로컬에서 직접 확인해야 한다. FE를 CI에 넣는 것은 Phase 4다.
