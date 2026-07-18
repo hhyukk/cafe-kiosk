@@ -9,6 +9,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.Comparator;
 import java.util.NoSuchElementException;
@@ -75,6 +76,19 @@ public class GlobalExceptionHandler {
                         ex.getMessage()
                 ),
                 CONFLICT
+        );
+    }
+
+    // 400 : 쿼리 파라미터·경로 변수의 타입 변환 실패 (예: ?status=NOPE → OrderStatus 변환 불가).
+    //       바디 검증용 MethodArgumentNotValidException 과 다른 계열이라 별도 매핑이 필요하다.
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<RsData<Void>> handle(MethodArgumentTypeMismatchException ex) {
+        return new ResponseEntity<>(
+                new RsData<>(
+                        "400-1",
+                        "잘못된 요청 파라미터입니다."
+                ),
+                BAD_REQUEST
         );
     }
 
