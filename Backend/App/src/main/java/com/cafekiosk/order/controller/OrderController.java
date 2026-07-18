@@ -1,6 +1,8 @@
 package com.cafekiosk.order.controller;
 
+import com.cafekiosk.global.rsData.RsData;
 import com.cafekiosk.order.dto.OrderDto;
+import com.cafekiosk.order.entity.OrderStatus;
 import com.cafekiosk.order.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,7 +20,10 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @Tag(name = "Order API", description = "카페 주문 생성 및 고객별 주문 내역 조회를 담당하는 API입니다.")
 @RestController
@@ -68,6 +73,28 @@ public class OrderController {
         }
 
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+            summary = "주문 목록 조회 (점주/주방)",
+            description = "점주·바리스타가 볼 전체 주문 목록입니다. status 를 지정하면 해당 상태만, 생략하면 전체를 "
+                    + "주문 시각 오름차순(먼저 들어온 순)으로 반환합니다. 목록이 비어 있어도 200 + 빈 배열입니다."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200-1", description = "주문 목록 조회 성공"),
+            @ApiResponse(responseCode = "400-1", description = "status 파라미터 값이 올바르지 않음")
+    })
+    @GetMapping("/api/orders")
+    @Transactional(readOnly = true)
+    public RsData<List<OrderDto.OrderSummary>> getOrders(
+            @Parameter(description = "필터링할 주문 상태. 생략 시 전체 조회", example = "IN_PROGRESS")
+            @RequestParam(required = false) OrderStatus status
+    ) {
+        return new RsData<>(
+                "200-1",
+                "주문 목록 조회 성공",
+                orderService.getOrdersByStatus(status)
+        );
     }
 
     @Operation(

@@ -104,31 +104,61 @@ public class OrderService {
             Order order = orderItem.getOrder();
             orderMap
                     .computeIfAbsent(order, o -> new ArrayList<>())
-                    .add(new OrderDto.OrderItemDTO(
-                            orderItem.getMenu().getMenuName(),
-                            // 현재 메뉴 가격이 아니라 주문 시점 스냅샷을 읽는다.
-                            // 여기서 menu.getMenuPrice() 를 읽으면 과거 주문 금액이 소급 변경된다.
-                            orderItem.getOrderPrice(),
-                            orderItem.getCount()
-                    ));
+                    .add(toItemDTO(orderItem));
         }
 
         List<OrderDto.OrderSummary> summaries = new ArrayList<>();
         for (Map.Entry<Order, List<OrderDto.OrderItemDTO>> entry : orderMap.entrySet()) {
-            Order order = entry.getKey();
-            List<OrderDto.OrderItemDTO> items = entry.getValue();
-
-            summaries.add(new OrderDto.OrderSummary(
-                    order.getOrderNumber(),
-                    order.getTotalPrice(),
-                    items
-            ));
+            summaries.add(toOrderSummary(entry.getKey(), entry.getValue()));
         }
 
         // 이메일 기준 전체 주문 묶음 반환
         return new OrderDto.OrderListResponse(
                 email,
                 summaries
+        );
+    }
+
+    /**
+     * 점주/주방용 전체 주문 목록 조회. status 가 null 이면 전체, 지정되면 해당 상태만 반환한다.
+     * 주방은 먼저 들어온 주문부터 만들어야 하므로 주문 시각(orderTime) 오름차순(FIFO)으로 정렬한다.
+     */
+    @Transactional(readOnly = true)
+    public List<OrderDto.OrderSummary> getOrdersByStatus(OrderStatus status) {
+        List<Order> orders = (status == null)
+                ? orderRepository.findAllByOrderByOrderTimeAsc()
+                : orderRepository.findByStatusOrderByOrderTimeAsc(status);
+
+        // N+1: order 별로 orderItems·menu 를 lazy 순회한다. 주방 활성 주문은 소량이라
+        //      Phase 1 에서는 허용한다. fetch join 최적화는 이후 Phase 로 미룬다.
+        List<OrderDto.OrderSummary> result = new ArrayList<>();
+        for (Order order : orders) {
+            List<OrderDto.OrderItemDTO> items = order.getOrderItems().stream()
+                    .map(this::toItemDTO)
+                    .toList();
+            result.add(toOrderSummary(order, items));
+        }
+        return result;
+    }
+
+    // 가격 스냅샷을 읽는 유일한 지점. 여기서 menu.getMenuPrice() 를 읽으면
+    // 과거 주문 금액이 현재 메뉴 가격으로 소급 변경되고, 가격 스냅샷 회귀 테스트가 잡는다.
+    private OrderDto.OrderItemDTO toItemDTO(OrderItem orderItem) {
+        return new OrderDto.OrderItemDTO(
+                orderItem.getMenu().getMenuName(),
+                orderItem.getOrderPrice(),
+                orderItem.getCount()
+        );
+    }
+
+    private OrderDto.OrderSummary toOrderSummary(Order order, List<OrderDto.OrderItemDTO> items) {
+        return new OrderDto.OrderSummary(
+                order.getId(),
+                order.getOrderNumber(),
+                order.getStatus(),
+                order.getOrderTime(),
+                order.getTotalPrice(),
+                items
         );
     }
 }

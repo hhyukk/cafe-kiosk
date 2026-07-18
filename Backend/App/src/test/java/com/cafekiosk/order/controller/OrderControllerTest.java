@@ -9,6 +9,7 @@ import com.cafekiosk.order.entity.Customer;
 import com.cafekiosk.order.repository.CustomerRepository;
 import com.cafekiosk.order.entity.Order;
 import com.cafekiosk.order.entity.OrderItem;
+import com.cafekiosk.order.entity.OrderStatus;
 import com.cafekiosk.order.repository.OrderItemRepository;
 import com.cafekiosk.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
@@ -461,5 +462,69 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                 .andDo(print())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("존재하지 않는 주문입니다: 999999"));
+    }
+
+    // ── 점주/주방용 주문 목록 조회 GET /api/orders (Phase 1-1 신설) ──
+    // 각 테스트는 @Transactional 로 롤백되고 BaseInitData 는 test 프로필에 주문을 심지 않으므로,
+    // setup()이 만든 CONFIRMED 주문 1건만 존재하는 상태에서 시작한다.
+
+    @Test
+    @DisplayName("주문 목록 조회 - status 미지정이면 전체를 반환하고 orderId·status·orderTime 이 내려온다")
+    void getOrders_noStatus_exposesOrderIdStatusOrderTime() throws Exception {
+        mvc.perform(get("/api/orders"))
+                .andDo(print())
+                .andExpect(handler().handlerType(OrderController.class))
+                .andExpect(handler().methodName("getOrders"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                // Phase 1-1 의 진짜 목표 — 이 세 필드가 실제로 응답에 담긴다
+                .andExpect(jsonPath("$.data[0].orderId").isNumber())
+                .andExpect(jsonPath("$.data[0].status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.data[0].orderTime").isNotEmpty())
+                // 기존 필드도 유지된다 — 아메리카노(3000) x2 + 카페라떼(4000) x1 = 10,000원
+                .andExpect(jsonPath("$.data[0].orderNumber").isNotEmpty())
+                .andExpect(jsonPath("$.data[0].totalPrice").value(10000))
+                .andExpect(jsonPath("$.data[0].items.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("주문 목록 조회 - status 필터는 해당 상태의 주문만 반환한다")
+    void getOrders_filterByStatus() throws Exception {
+        // given — setup 주문을 CONFIRMED → IN_PROGRESS 로 전이
+        orderService.changeStatus(seededOrderId(), OrderStatus.IN_PROGRESS);
+
+        // when: IN_PROGRESS 로 조회하면 전이된 주문이 보인다
+        mvc.perform(get("/api/orders").param("status", "IN_PROGRESS"))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].status").value("IN_PROGRESS"));
+
+        // when: CONFIRMED 로 조회하면 더 이상 보이지 않는다(상태가 바뀌었으므로)
+        mvc.perform(get("/api/orders").param("status", "CONFIRMED"))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("주문 목록 조회 - 매칭되는 주문이 없으면 404 가 아니라 200 + 빈 배열")
+    void getOrders_noMatch_returnsEmptyList() throws Exception {
+        // setup 주문은 CONFIRMED 상태이므로 READY 로 조회하면 매칭이 없다
+        mvc.perform(get("/api/orders").param("status", "READY"))
+                .andDo(print())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("주문 목록 조회 - 잘못된 status 값은 400 + RsData 봉투")
+    void getOrders_invalidStatus_badRequest() throws Exception {
+        mvc.perform(get("/api/orders").param("status", "NOPE"))
+                .andDo(print())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.resultCode").value("400-1"));
     }
 }
