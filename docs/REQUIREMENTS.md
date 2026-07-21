@@ -204,6 +204,11 @@
 | FR-FILE-04 | **업로드는 점주 전용이다** | 필수 | ⬜ | 1 | 미구현 — 현재 누구나 서버 디스크에 파일을 쓸 수 있다 |
 | FR-FILE-05 | 업로드 요청도 **BFF를 거친다** | 필수 | ⬜ | 4 | 미구현 — 현재 브라우저가 8080을 직접 호출한다(C-04 위반) |
 | FR-FILE-06 | 커밋된 시드 이미지(클래스패스)와 런타임 업로드 파일(파일시스템)이 **모두 `/uploads/**`로 서빙**된다 | 필수 | ✅ | — | `global/config/WebConfig.addResourceHandlers` |
+| FR-FILE-07 | 저장되는 이미지 URL은 **호스트를 포함하지 않는다.** `/uploads/{파일명}` 형태의 상대경로이며, DB에 배포 환경 주소가 박히지 않는다 | 필수 | ⬜ | 4 | 미구현 — `FileUploadController.uploadImage`가 `server.base-url`을 앞에 붙이고, `BaseInitData` 시드도 절대 URL이다 |
+
+> **FR-FILE-07은 코드가 아니라 데이터에 박히는 결함이라 따로 세웠다.** `page.tsx`의 `uploadImage`가 백엔드에서 받은 절대 URL을 그대로 메뉴 등록에 실어 보내므로 `http://localhost:8080/...`이 **`Menu.imgUrl` 컬럼에 저장된다.** NFR-OPS-02는 코드의 하드코딩만 세기 때문에, 그것을 0곳으로 만들어도 기존 행은 여전히 localhost를 가리킨 채 남는다 — 통과하고도 배포하면 이미지가 깨진다.
+>
+> 이것이 해결되면 브라우저가 `img` 태그로 8080을 직접 때리는 경로도 함께 사라진다. 상대경로가 되는 순간 `next.config.ts`의 `/uploads/:path*` rewrite가 살아나기 때문이다. **지금 그 rewrite는 절대 URL만 오가는 탓에 한 번도 타지 않는 죽은 설정이다.** 구조는 [`design/architecture.md §3-1`](design/architecture.md#3-1-브라우저--백엔드-경로가-셋이다).
 
 ---
 
@@ -584,6 +589,7 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 | `ddl-auto` 없이 Flyway로 스키마가 만들어진다 | NFR-OPS-01 | 기동 확인 |
 | 배포 환경에서 Phase 1 흐름이 그대로 돈다 | NFR-OPS-04 / **AC-14** | 수동 |
 | — | FR-KSK-09 (`POST /api/order/list` 폐기) | `grep` |
+| — | FR-FILE-07 | `grep` + `menu.img_url`에 `http`로 시작하는 행이 0건. 기존 행은 Flyway 마이그레이션으로 고친다 |
 | — | NFR-SEC-03, NFR-OPS-05 | 코드 리뷰 + 문서 |
 
 ### 상시 — 특정 Phase에 속하지 않는 것

@@ -112,6 +112,8 @@ flowchart TD
 
 이 셋을 한 줄로 요약하면: **"브라우저는 8080을 직접 호출하지 않는다"는 규약이 현재 이미지 도메인 전체에서 깨져 있다.**
 
+②는 FR-FILE-05가, ③은 **FR-FILE-07**이 청산한다. ③이 별도 요구사항인 이유는 고칠 대상이 코드가 아니라 **DB에 저장된 값**이기 때문이다 — 자세한 것은 [`REQUIREMENTS.md §5-8`](../REQUIREMENTS.md#5-8-fr-file--이미지-업로드).
+
 ### 3-2. `/uploads/**`가 두 곳을 보는 이유
 
 `WebConfig.addResourceHandlers`가 **파일시스템과 클래스패스를 순서대로** 뒤진다.
@@ -186,7 +188,7 @@ flowchart TD
 | 재고 | `OrderService`가 `Stock`을 참조조차 안 함 | 주문 트랜잭션 안에서 `Stock.decrease()` | 2 | FR-STK-02~06 |
 | Redis | 컨테이너만 존재 | Redisson 분산 락으로 **처음 실사용** | 3 | NFR-CON-03 |
 | 이미지 업로드 | 브라우저 → :8080 직통 | BFF 경유 | 4 | FR-FILE-05 |
-| 이미지 표시 | 절대 URL로 :8080 직통 | 상대경로 + rewrite (또는 오브젝트 스토리지) | 4 | C-04, NFR-OPS-05 |
+| 이미지 표시 | 절대 URL로 :8080 직통 | 상대경로 + rewrite (또는 오브젝트 스토리지) | 4 | FR-FILE-07, NFR-OPS-05 |
 | 백엔드 주소 | 하드코딩 9곳 | 환경변수 0곳 | 4 | NFR-OPS-02 |
 | 스키마 | `ddl-auto: create` | Flyway 마이그레이션 | 4 | NFR-OPS-01 |
 
