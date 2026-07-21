@@ -5,7 +5,7 @@ Spring Boot 4.0.0 / Java 21 / PostgreSQL 16 / JPA / Lombok.
 
 포매터·린터 설정은 없다 (Checkstyle/Spotless 미도입). 주변 코드 스타일에 맞춘다.
 
-제품 방향과 로드맵은 루트의 [`docs/PRODUCT.md`](../../docs/PRODUCT.md)에 있다. 배송몰 시절의 잔재(`Order.address`/`postcode`)는 **Phase 0에서 제거했다** — 새 코드에 배송 개념을 넣지 않는다. 손님은 `Order.orderNumber`(대기번호)를 받아간다.
+제품 방향("왜")은 [`docs/PRODUCT.md`](../../docs/PRODUCT.md), 로드맵·진행 상태는 [`docs/ROADMAP.md`](../../docs/ROADMAP.md)에 있다. 배송몰 시절의 잔재(`Order.address`/`postcode`)는 **Phase 0에서 제거했다** — 새 코드에 배송 개념을 넣지 않는다. 손님은 `Order.orderNumber`(대기번호)를 받아간다.
 
 ## 패키지 구조 — 레이어별이 아니라 기능(feature)별
 
@@ -59,11 +59,11 @@ com.cafekiosk
 
 > `CONFIRMED`는 "결제까지 끝난 상태"로 정의한다. **실결제(PG) 연동은 의도적으로 스코프 아웃했다** — 이유는 `docs/PRODUCT.md` 참고.
 
-## ⚠️ 주문 조회 응답에 아직 상태가 없다
+## 주문 조회 응답 · 주문 목록 API (Phase 1에서 채움 — 완료)
 
-상태를 **바꾸는** API는 있는데(`PATCH /api/order/{orderId}/status`), **읽는** 경로가 없다. 주문 조회 응답(`OrderDto.OrderSummary`)은 Phase 0에서 `orderNumber`·`totalPrice`까지는 채웠지만 **`orderId`·`status`·`orderTime`이 여전히 빠져 있다.** 점주용 전체 주문 목록 API도 없다.
+주문 조회 응답(`OrderDto.OrderSummary`)에 `orderId`·`orderNumber`·`status`·`orderTime`·`totalPrice`가 모두 노출된다. 점주/주방용 전체 주문 목록 API도 있다 — `GET /api/orders?status=IN_PROGRESS`(상태 없으면 전체, `orderTime` 오름차순 FIFO).
 
-Phase 1에서 채운다. 그 전까지 주방 화면은 만들 수 없다.
+이걸로 주방 화면(`/kitchen`)을 만들 수 있게 됐다. **Phase 1의 남은 작업은 Spring Security 도입과 프론트 화면 3분할이다** — `docs/ROADMAP.md` 참고.
 
 ## ⚠️ dev 프로필은 DB를 매번 초기화한다
 

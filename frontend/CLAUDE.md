@@ -13,7 +13,7 @@ npm run dev    # 3000. 백엔드가 8080에 떠 있어야 메뉴/주문이 동�
 
 손님은 이메일만 넣고 주문하면 **대기번호**(`orderNumber`)를 받아 카운터에서 음료를 받아간다. 주문 내역의 가격은 **주문 시점 스냅샷**(`orderPrice`)이지 현재 메뉴 가격이 아니다 — 백엔드가 그렇게 내려준다.
 
-제품 방향과 로드맵은 루트의 [`docs/PRODUCT.md`](../docs/PRODUCT.md)에 있다.
+제품 방향("왜")은 [`docs/PRODUCT.md`](../docs/PRODUCT.md), 로드맵·진행 상태는 [`docs/ROADMAP.md`](../docs/ROADMAP.md)에 있다.
 
 ## `/` 하나에 세 제품이 섞여 있다 — 곧 쪼개진다
 
