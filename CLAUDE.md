@@ -35,6 +35,7 @@ Phase 1은 백엔드 절반이 끝났다 — 주문 조회 응답의 상태 노�
 | `docs/PRODUCT.md` | 제품 기획 · "왜" (정체성 · 스코프아웃 · 목표 모델) |
 | `docs/REQUIREMENTS.md` | 요구사항명세 · "무엇" (요구사항 ID · 인수 기준 · 권한 매트릭스) |
 | `docs/ROADMAP.md` | 로드맵 · Phase별 진행 상태 (정본) |
+| `docs/design/architecture.md` | 시스템 구성도 · "어떻게 조립돼 있는가" (런타임 · 계층 · 요청 흐름 · 데이터 모델) |
 | `.github/` | CI + PR / 이슈 템플릿 |
 
 **각 디렉토리에 스택별 `CLAUDE.md`가 따로 있다. 백엔드/프론트 작업 시 그쪽을 먼저 읽을 것.**

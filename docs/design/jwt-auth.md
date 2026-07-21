@@ -31,6 +31,8 @@ JWT를 "만드는 쪽(`createAccessToken`)"과 "검증하고 까보는 쪽(`vali
 
 발급은 `AuthService`에서, 검증은 `JwtAuthenticationFilter`에서 이 클래스를 호출한다. JwtTokenProvider 자신은 **누가 부르는지 모른다** — 토큰을 다루는 순수 책임만 가진다.
 
+> 이 흐름이 시스템 전체 어디에 놓이는지(BFF가 토큰을 붙이는 지점, 필터가 컨트롤러 앞에 서는 위치)는 [`architecture.md §6-4`](architecture.md#6-4-인증된-요청-phase-1-목표)에 있다.
+
 ---
 
 ## 3. 필드와 생성자
