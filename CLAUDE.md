@@ -4,7 +4,7 @@
 
 이 레포의 진짜 주제는 **재고 동시성 제어**다 — 마지막 한 잔을 두 손님이 동시에 누르면 어떻게 되는가. 키오스크는 그 문제가 자연스럽게 발생하는 무대다. 학습 프로젝트다.
 
-**제품 방향과 로드맵은 [`docs/PRODUCT.md`](docs/PRODUCT.md)에 있다.** 기능을 추가하거나 설계를 바꾸기 전에 읽는다.
+**제품 방향("왜")은 [`docs/PRODUCT.md`](docs/PRODUCT.md), 로드맵·진행 상태는 [`docs/ROADMAP.md`](docs/ROADMAP.md)에 있다.** 기능을 추가하거나 설계를 바꾸기 전에 읽는다.
 
 ## ⚠️ 이 레포는 배송 쇼핑몰이 **아니다**
 
@@ -14,13 +14,15 @@
 
 ```
 Phase 0  정체성 정리 + 결함 청산    ✅ 완료
-Phase 1  키오스크 루프 완성 — 주방·관리자 화면 분리, Spring Security  ← 지금 여기
+Phase 1  키오스크 루프 완성 — 주방·관리자 화면 분리, Spring Security  🔶 진행 중  ← 지금 여기
 Phase 2  재고를 주문에 연결
 Phase 3  동시성 ★ 이 프로젝트의 목적지
 Phase 4  배포 — Flyway, AWS
 ```
 
-각 Phase의 내용과 완료 기준은 `docs/PRODUCT.md`에 있다.
+Phase 1은 백엔드 절반이 끝났다 — 주문 조회 응답의 상태 노출과 점주용 주문 목록 API(`GET /api/orders`)는 완료, **Spring Security와 화면 3분할이 남았다.**
+
+로드맵과 각 Phase의 진행 상태·완료 기준은 [`docs/ROADMAP.md`](docs/ROADMAP.md)(정본), 제품 배경과 "왜"는 [`docs/PRODUCT.md`](docs/PRODUCT.md)에 있다.
 
 **Phase 0에서 확정된 것** — `Order.orderNumber`(대기번호, PK에서 파생), `Order.totalPrice`, `OrderItem.orderPrice`(주문 시점 가격 스냅샷). 총액 합산은 `Order.addOrderItem()`이, 가격 스냅샷은 `OrderItem` 생성자가 소유한다. **주문 금액을 서비스에서 직접 계산하지 않는다.**
 
@@ -30,7 +32,8 @@ Phase 4  배포 — Flyway, AWS
 | --- | --- |
 | `Backend/App/` | Spring Boot 4 / Java 21 API 서버 (8080). **Gradle 루트가 여기다** |
 | `frontend/` | Next.js 16 App Router 키오스크 UI (3000) |
-| `docs/PRODUCT.md` | 제품 기획 · 로드맵 |
+| `docs/PRODUCT.md` | 제품 기획 · "왜" (정체성 · 스코프아웃 · 목표 모델) |
+| `docs/ROADMAP.md` | 로드맵 · Phase별 진행 상태 (정본) |
 | `.github/` | CI + PR / 이슈 템플릿 |
 
 **각 디렉토리에 스택별 `CLAUDE.md`가 따로 있다. 백엔드/프론트 작업 시 그쪽을 먼저 읽을 것.**
