@@ -204,11 +204,13 @@
 | FR-FILE-04 | **업로드는 점주 전용이다** | 필수 | ⬜ | 1 | 미구현 — 현재 누구나 서버 디스크에 파일을 쓸 수 있다 |
 | FR-FILE-05 | 업로드 요청도 **BFF를 거친다** | 필수 | ⬜ | 4 | 미구현 — 현재 브라우저가 8080을 직접 호출한다(C-04 위반) |
 | FR-FILE-06 | 커밋된 시드 이미지(클래스패스)와 런타임 업로드 파일(파일시스템)이 **모두 `/uploads/**`로 서빙**된다 | 필수 | ✅ | — | `global/config/WebConfig.addResourceHandlers` |
-| FR-FILE-07 | 저장되는 이미지 URL은 **호스트를 포함하지 않는다.** `/uploads/{파일명}` 형태의 상대경로이며, DB에 배포 환경 주소가 박히지 않는다 | 필수 | ⬜ | 4 | 미구현 — `FileUploadController.uploadImage`가 `server.base-url`을 앞에 붙이고, `BaseInitData` 시드도 절대 URL이다 |
+| FR-FILE-07 | 저장되는 이미지 URL은 **호스트를 포함하지 않는다.** `/uploads/{파일명}` 형태의 상대경로이며, DB에 배포 환경 주소가 박히지 않는다 | 필수 | ✅ | 1 | `FileUploadController.uploadImage`, `global/initData/BaseInitData.work1` |
 
-> **FR-FILE-07은 코드가 아니라 데이터에 박히는 결함이라 따로 세웠다.** `page.tsx`의 `uploadImage`가 백엔드에서 받은 절대 URL을 그대로 메뉴 등록에 실어 보내므로 `http://localhost:8080/...`이 **`Menu.imgUrl` 컬럼에 저장된다.** NFR-OPS-02는 코드의 하드코딩만 세기 때문에, 그것을 0곳으로 만들어도 기존 행은 여전히 localhost를 가리킨 채 남는다 — 통과하고도 배포하면 이미지가 깨진다.
+> **FR-FILE-07은 코드가 아니라 데이터에 박히는 결함이라 따로 세웠다.** `page.tsx`의 `uploadImage`는 백엔드가 돌려준 URL을 그대로 메뉴 등록에 실어 보내므로, 그 값이 **`Menu.imgUrl` 컬럼에 저장된다.** NFR-OPS-02는 코드의 하드코딩만 세기 때문에 그것을 0곳으로 만들어도 이미 저장된 행은 손대지 못한다 — 통과하고도 배포하면 이미지가 깨진다.
 >
-> 이것이 해결되면 브라우저가 `img` 태그로 8080을 직접 때리는 경로도 함께 사라진다. 상대경로가 되는 순간 `next.config.ts`의 `/uploads/:path*` rewrite가 살아나기 때문이다. **지금 그 rewrite는 절대 URL만 오가는 탓에 한 번도 타지 않는 죽은 설정이다.** 구조는 [`design/architecture.md §3-1`](design/architecture.md#3-1-브라우저--백엔드-경로가-셋이다).
+> **해결하면서 브라우저가 `img` 태그로 8080을 직접 때리던 경로도 함께 사라졌다.** 상대경로가 되는 순간 `next.config.ts`의 `/uploads/:path*` rewrite가 그 요청을 받아 백엔드로 넘긴다. 그전까지 이 rewrite는 절대 URL만 오가는 탓에 **한 번도 타지 않는 죽은 설정**이었다. 구조는 [`design/architecture.md §3-1`](design/architecture.md#3-1-브라우저--백엔드-경로가-셋이다).
+>
+> Phase 4가 아니라 **Phase 1에서 처리했다.** 애초에 Phase 4로 잡았던 이유는 기존 행을 고치려면 마이그레이션이 필요하고 그 수단이 Flyway라서였는데, `dev`는 `ddl-auto: create`라 기동마다 시드를 다시 심고 **배포된 DB가 아직 없다.** 고칠 데이터가 없는 지금이 가장 싸다. 나중에 하면 마이그레이션을 한 번 더 써야 한다.
 
 ---
 
@@ -380,7 +382,7 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 | ID | 요구사항 | 우선 | 상태 | Phase |
 | --- | --- | --- | --- | --- |
 | NFR-OPS-01 | 스키마는 **Flyway 마이그레이션**으로 관리되고 `ddl-auto`는 폐기된다 | 필수 | ⬜ | 4 |
-| NFR-OPS-02 | 레포 전체에 `localhost:8080` 하드코딩이 **0곳**이다 (현재 9곳) | 필수 | ⬜ | 4 |
+| NFR-OPS-02 | 레포 전체에 `localhost:8080` 하드코딩이 **0곳**이다 (현재 9곳, 전부 프론트) | 필수 | ⬜ | 4 |
 | NFR-OPS-03 | 프로필이 `dev` / `test` / `prod`로 분리되고, 활성 프로필은 환경변수로 정해진다 | 필수 | 🔶 | 4 |
 | NFR-OPS-04 | 배포된 환경에서 AC-14(끝에서 끝까지)가 그대로 동작한다 | 필수 | ⬜ | 4 |
 | NFR-OPS-05 | 업로드 파일의 영속성 전략(로컬 디스크 유지 vs 오브젝트 스토리지)을 **결정하고 문서에 남긴다** | 권장 | ⬜ | 4 |
@@ -550,6 +552,7 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 | — | FR-KIT-04, FR-KIT-06, NFR-UX-01 | 수동 (`/kitchen` 폴링 3초) |
 | — | FR-KSK-05, FR-ADM-01, FR-ADM-03, FR-ADM-04 | 수동 + PR 스크린샷 (화면 3분할) |
 | — | FR-FILE-04 | 신설 통합 테스트 (토큰 없이 업로드 → 401) |
+| — | FR-FILE-07 | `file/controller/FileUploadControllerTest` — 업로드 응답이 `/uploads/{UUID}.{확장자}` 인지 확인. 추가로 `menu.img_url`에 `http`로 시작하는 행이 0건 |
 
 ### Phase 2
 
@@ -589,7 +592,6 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 | `ddl-auto` 없이 Flyway로 스키마가 만들어진다 | NFR-OPS-01 | 기동 확인 |
 | 배포 환경에서 Phase 1 흐름이 그대로 돈다 | NFR-OPS-04 / **AC-14** | 수동 |
 | — | FR-KSK-09 (`POST /api/order/list` 폐기) | `grep` |
-| — | FR-FILE-07 | `grep` + `menu.img_url`에 `http`로 시작하는 행이 0건. 기존 행은 Flyway 마이그레이션으로 고친다 |
 | — | NFR-SEC-03, NFR-OPS-05 | 코드 리뷰 + 문서 |
 
 ### 상시 — 특정 Phase에 속하지 않는 것
@@ -599,7 +601,7 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 | 요구사항 | 검증 |
 | --- | --- |
 | FR-STK-01 (메뉴↔재고 1:1) | `stock/repository/StockRepositoryIntegrationTest` |
-| FR-FILE-01, FR-FILE-02, FR-FILE-03 (업로드 형식·크기·파일명) | 수동 (자동 테스트 없음 — 부채) |
+| FR-FILE-01, FR-FILE-02, FR-FILE-03 (업로드 형식·크기) | 수동 (자동 테스트 없음 — 부채). 파일명 UUID 규칙만 `FileUploadControllerTest`가 곁다리로 검증한다 |
 | FR-FILE-06 (`/uploads/**` 이중 서빙) | 수동 (시드 이미지가 clone 직후에도 보이는지) |
 | FR-KSK-10, NFR-UX-02 (한국어 UI) | 코드 리뷰 |
 | NFR-UX-03 (BFF 오류 메시지 정규화) | 코드 리뷰 (BFF 핸들러) |

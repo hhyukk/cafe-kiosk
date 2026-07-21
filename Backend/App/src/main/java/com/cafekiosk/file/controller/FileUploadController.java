@@ -25,9 +25,6 @@ public class FileUploadController {
     @Value("${file.upload-dir:uploads}")
     private String uploadDir;
 
-    @Value("${server.base-url:http://localhost:8080}")
-    private String baseUrl;
-
     @PostMapping("/image")
     public ResponseEntity<?> uploadImage(@RequestParam("file") MultipartFile file) {
         try {
@@ -70,7 +67,13 @@ public class FileUploadController {
             file.transferTo(filePath.toFile());
             log.info("파일 저장 완료: {}", filePath.toAbsolutePath());
 
-            String imageUrl = baseUrl + "/uploads/" + uniqueFilename;
+            // 호스트를 붙이지 않는다 (FR-FILE-07).
+            // 이 값은 Menu.imgUrl 컬럼에 그대로 저장되므로, 여기에 http://localhost:8080 을
+            // 붙이면 배포 환경 주소가 데이터에 박힌다. 코드의 하드코딩은 grep 으로 걷어낼 수
+            // 있지만 이미 저장된 행은 그렇지 않다.
+            // 상대경로로 내려주면 프론트의 next.config.ts rewrite(/uploads/:path*)가 받아
+            // 백엔드로 넘기므로, 브라우저가 8080 을 직접 호출하지 않게 되는 효과도 함께 얻는다.
+            String imageUrl = "/uploads/" + uniqueFilename;
 
             Map<String, String> response = new HashMap<>();
             response.put("imageUrl", imageUrl);

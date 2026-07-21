@@ -35,8 +35,9 @@ spring:
 file:
   upload-dir: ./uploads
 
-server:
-  base-url: http://localhost:8080
+# server.base-url 은 제거했다 (FR-FILE-07).
+# 업로드 응답에 호스트를 붙이는 용도로만 쓰였는데, 그 값이 Menu.imgUrl 로 DB 에 저장돼
+# 배포 환경 주소가 데이터에 박히는 원인이었다. 이제 상대경로를 내려주므로 필요 없다.
 
 logging:
   level:

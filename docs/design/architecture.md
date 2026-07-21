@@ -80,39 +80,38 @@ flowchart TD
 
     PAGE ==>|"fetch('/api/*')"| BFF
     BFF ==>|"fetch('http://localhost:8080/...')"| API
-    PAGE -.->|"⚠ 직통 ① 이미지 업로드 2곳<br/>POST /api/upload/image"| API
-    PAGE -.->|"⚠ 직통 ② img src 가 절대 URL<br/>http://localhost:8080/uploads/..."| STATIC
-    RW -.->|"현재 타지 않는다"| STATIC
+    PAGE -->|"img src='/uploads/...'"| RW
+    RW -->|"프록시"| STATIC
+    PAGE -.->|"⚠ 직통 · 이미지 업로드 2곳<br/>POST /api/upload/image"| API
 
     API --> PG
     STATIC --> FS
     STATIC --> CP
 
     style RD stroke-dasharray: 5 5
-    style RW stroke-dasharray: 5 5
 ```
 
 ### 3-1. 브라우저 → 백엔드 경로가 **셋**이다
 
-구성도에서 가장 중요한 부분. 하나의 화살표가 아니라 성격이 다른 셋이고, **둘이 BFF 규약(C-04)을 어기고 있다.**
+구성도에서 가장 중요한 부분. 하나의 화살표가 아니라 성격이 다른 셋이고, **아직 하나가 BFF 규약(C-04)을 어기고 있다.**
 
 | # | 무엇 | 통과 지점 | C-04 |
 | --- | --- | --- | --- |
 | ① | 메뉴 · 주문 | `page.tsx` → BFF Route Handler → :8080 | ✅ 준수 |
-| ② | 이미지 **업로드** | 없음. `page.tsx`가 브라우저에서 :8080 직접 호출 | ❌ 위반 |
-| ③ | 이미지 **표시** | 없음. `<img src>`가 절대 URL이라 브라우저가 :8080에서 직접 받는다 | ❌ 위반 |
+| ② | 이미지 **업로드** | 없음. `page.tsx`가 브라우저에서 :8080 직접 호출 | ❌ 위반 (FR-FILE-05, Phase 4) |
+| ③ | 이미지 **표시** | `<img src="/uploads/...">` → `next.config.ts` rewrite → :8080 | ✅ 준수 (FR-FILE-07) |
 
-**③이 이 문서를 쓰면서 드러난 사실이다.** `next.config.ts`에 `/uploads/:path*` → :8080 rewrite가 있어서 이미지가 Next를 거쳐 프록시되는 것처럼 보이지만, 실제로는 그렇지 않다:
+**③은 이 문서를 쓰면서 드러난 결함이었고, 그 자리에서 고쳤다.** 고치기 전에는 이랬다:
 
-- `BaseInitData`의 시드 메뉴가 `imgUrl`을 **절대 URL**(`http://localhost:8080/uploads/...`)로 심는다
-- `FileUploadController.uploadImage`도 응답 `imageUrl`에 `server.base-url`을 **앞에 붙여서** 절대 URL로 돌려준다
-- `page.tsx`는 그 값을 `<img src={product.img_url}>`에 그대로 꽂는다
+- `BaseInitData`의 시드 메뉴가 `imgUrl`을 **절대 URL**(`http://localhost:8080/uploads/...`)로 심었다
+- `FileUploadController.uploadImage`도 응답 `imageUrl`에 `server.base-url`을 **앞에 붙여서** 절대 URL로 돌려줬다
+- `page.tsx`는 그 값을 `<img src={product.img_url}>`에 그대로 꽂았다
 
-→ 상대경로 `/uploads/...`가 만들어지는 경로가 없으므로 **rewrite는 사실상 죽은 설정**이다. 관리자가 폼에 상대경로를 손으로 입력했을 때만 동작한다. 이미지가 화면에 뜨는 것은 rewrite 덕분이 아니라 **브라우저가 :8080을 직접 때리기 때문**이다(`<img>` 태그에는 CORS가 적용되지 않아 조용히 성공한다).
+→ 상대경로 `/uploads/...`가 만들어지는 경로가 없으니 **rewrite는 한 번도 타지 않는 죽은 설정**이었고, 이미지가 화면에 뜨는 것은 rewrite 덕분이 아니라 **브라우저가 :8080을 직접 때리기 때문**이었다. `<img>` 태그에는 CORS가 적용되지 않아 조용히 성공하고 있었다.
 
-이 셋을 한 줄로 요약하면: **"브라우저는 8080을 직접 호출하지 않는다"는 규약이 현재 이미지 도메인 전체에서 깨져 있다.**
+**진짜 문제는 그 절대 URL이 `Menu.imgUrl` 컬럼에 저장된다는 것이었다.** 코드의 하드코딩은 `grep`으로 걷어낼 수 있지만 이미 저장된 행은 그렇지 않다. 그래서 요구사항을 "BFF를 거쳐라"가 아니라 **"호스트를 저장하지 마라"**(FR-FILE-07)로 잡았다. 백엔드가 상대경로를 내려주도록 바꾸니 rewrite가 살아나면서 ③의 직통 호출도 함께 사라졌다. 근거는 [`REQUIREMENTS.md §5-8`](../REQUIREMENTS.md#5-8-fr-file--이미지-업로드).
 
-②는 FR-FILE-05가, ③은 **FR-FILE-07**이 청산한다. ③이 별도 요구사항인 이유는 고칠 대상이 코드가 아니라 **DB에 저장된 값**이기 때문이다 — 자세한 것은 [`REQUIREMENTS.md §5-8`](../REQUIREMENTS.md#5-8-fr-file--이미지-업로드).
+남은 것은 ②뿐이다. 업로드 요청 자체를 BFF로 옮기는 일이라 Phase 4다.
 
 ### 3-2. `/uploads/**`가 두 곳을 보는 이유
 
@@ -188,8 +187,8 @@ flowchart TD
 | 재고 | `OrderService`가 `Stock`을 참조조차 안 함 | 주문 트랜잭션 안에서 `Stock.decrease()` | 2 | FR-STK-02~06 |
 | Redis | 컨테이너만 존재 | Redisson 분산 락으로 **처음 실사용** | 3 | NFR-CON-03 |
 | 이미지 업로드 | 브라우저 → :8080 직통 | BFF 경유 | 4 | FR-FILE-05 |
-| 이미지 표시 | 절대 URL로 :8080 직통 | 상대경로 + rewrite (또는 오브젝트 스토리지) | 4 | FR-FILE-07, NFR-OPS-05 |
-| 백엔드 주소 | 하드코딩 9곳 | 환경변수 0곳 | 4 | NFR-OPS-02 |
+| 백엔드 주소 | 프론트 하드코딩 9곳 | 환경변수 0곳 | 4 | NFR-OPS-02 |
+| 업로드 파일 보관 | 로컬 디스크 | 로컬 유지할지 오브젝트 스토리지로 옮길지 결론 | 4 | NFR-OPS-05 |
 | 스키마 | `ddl-auto: create` | Flyway 마이그레이션 | 4 | NFR-OPS-01 |
 
 ---
@@ -473,7 +472,7 @@ erDiagram
         string menuName
         int menuPrice "0 ~ 10,000,000"
         string category
-        string imgUrl "현재 절대 URL 로 저장된다"
+        string imgUrl "호스트 없는 상대경로 /uploads/..."
         string email "등록자 기록 · 인가에 쓰면 안 된다"
     }
     STOCK {
@@ -523,9 +522,8 @@ erDiagram
 | `menu/service/MenuService` | 인가가 요청 본문 이메일 문자열 비교 — 이메일만 알면 남의 메뉴를 수정·삭제 | §5-2 | Phase 1 |
 | `OrderController.changeStatus` · `FileUploadController` | 완전 공개 — 토큰 없이 호출 가능 | §4 | Phase 1 |
 | `page.tsx` (업로드 2곳) | 브라우저 → :8080 직통 | §3-1 ② | Phase 4 |
-| `imgUrl` 절대 URL | `<img>`가 :8080을 직접 때린다. `next.config.ts` rewrite는 죽은 설정 | §3-1 ③ | Phase 4 |
 | `WebConfig.addCorsMappings` | `allowedMethods`에 `PATCH` 없음 → 주방 화면 상태 변경이 preflight에서 막힌다 | §6-3 | Phase 1 |
-| 프론트 전역 + `application.yml` | `localhost:8080` 하드코딩 — 프론트 9곳(`src/` 8 + `next.config.ts` 1) + 백엔드 `server.base-url` 1곳 | §3 | Phase 4 |
+| 프론트 전역 | `localhost:8080` 하드코딩 9곳 — `src/` 8곳 + `next.config.ts` 1곳. **백엔드는 0곳이다** | §3 | Phase 4 |
 | `application.yml` | `ddl-auto: create` — 기동마다 데이터 소실 | §3-3 | Phase 4 |
 | `application.yml` | 바인딩 파라미터 TRACE 로깅 — 손님 이메일이 로그에 남는다 | §3-3 | Phase 4 |
 | `page.tsx` | 1230줄 단일 컴포넌트에 손님·관리자 UI 혼재 | §3 | Phase 1 |
