@@ -38,15 +38,18 @@ public class BaseInitData {
         // 가드가 항상 0이라 매 기동 재실행됐다 — ddl-auto 를 update 로 바꾸는 순간 메뉴가 무한 증식한다.
         if (menuRepository.count() > 0) return;
 
-        Menu menu1 = new Menu("에티오피아 예가체프", "http://localhost:8080/uploads/Ethiopia-Yirgacheffe.jpg", 15000, "커피원두", "example@example.com");
+        // imgUrl 은 호스트를 붙이지 않은 상대경로다 (FR-FILE-07).
+        // 여기에 http://localhost:8080 을 박으면 그 문자열이 그대로 DB 에 남아,
+        // 배포 환경에서 이미지가 전부 깨진다. 서빙은 WebConfig 의 /uploads/** 핸들러가 한다.
+        Menu menu1 = new Menu("에티오피아 예가체프", "/uploads/Ethiopia-Yirgacheffe.jpg", 15000, "커피원두", "example@example.com");
         menuRepository.save(menu1);
         stockRepository.save(new Stock(menu1, 100));
 
-        Menu menu2 = new Menu("콜롬비아 수프리모", "http://localhost:8080/uploads/Colombia Supremo.jpg", 18000, "커피원두", "example@example.com");
+        Menu menu2 = new Menu("콜롬비아 수프리모", "/uploads/Colombia Supremo.jpg", 18000, "커피원두", "example@example.com");
         menuRepository.save(menu2);
         stockRepository.save(new Stock(menu2, 50));
 
-        Menu menu3 = new Menu("브라질 산토스", "http://localhost:8080/uploads/Brazil Santos.jpg", 12000, "커피원두", "example@example.com");
+        Menu menu3 = new Menu("브라질 산토스", "/uploads/Brazil Santos.jpg", 12000, "커피원두", "example@example.com");
         menuRepository.save(menu3);
         stockRepository.save(new Stock(menu3, 3));
     }
