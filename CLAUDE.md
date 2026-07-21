@@ -4,7 +4,7 @@
 
 이 레포의 진짜 주제는 **재고 동시성 제어**다 — 마지막 한 잔을 두 손님이 동시에 누르면 어떻게 되는가. 키오스크는 그 문제가 자연스럽게 발생하는 무대다. 학습 프로젝트다.
 
-**제품 방향("왜")은 [`docs/PRODUCT.md`](docs/PRODUCT.md), 로드맵·진행 상태는 [`docs/ROADMAP.md`](docs/ROADMAP.md)에 있다.** 기능을 추가하거나 설계를 바꾸기 전에 읽는다.
+**제품 방향("왜")은 [`docs/PRODUCT.md`](docs/PRODUCT.md), 만족해야 할 요구사항("무엇")은 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md), 로드맵·진행 상태("언제")는 [`docs/ROADMAP.md`](docs/ROADMAP.md)에 있다.** 기능을 추가하거나 설계를 바꾸기 전에 읽는다.
 
 ## ⚠️ 이 레포는 배송 쇼핑몰이 **아니다**
 
@@ -33,6 +33,7 @@ Phase 1은 백엔드 절반이 끝났다 — 주문 조회 응답의 상태 노�
 | `Backend/App/` | Spring Boot 4 / Java 21 API 서버 (8080). **Gradle 루트가 여기다** |
 | `frontend/` | Next.js 16 App Router 키오스크 UI (3000) |
 | `docs/PRODUCT.md` | 제품 기획 · "왜" (정체성 · 스코프아웃 · 목표 모델) |
+| `docs/REQUIREMENTS.md` | 요구사항명세 · "무엇" (요구사항 ID · 인수 기준 · 권한 매트릭스) |
 | `docs/ROADMAP.md` | 로드맵 · Phase별 진행 상태 (정본) |
 | `.github/` | CI + PR / 이슈 템플릿 |
 

@@ -2,7 +2,9 @@
 
 > **이 문서가 진행 상태의 정본이다.** 여기는 **인덱스**이고, 각 Phase의 작업 단위·함정·완료 기준은 [`docs/roadmap/`](roadmap/)에 있다.
 >
-> "무엇을·왜"의 배경은 [`docs/PRODUCT.md`](PRODUCT.md), "어떻게 코드를 만지나"는 각 디렉토리의 `CLAUDE.md`에 있다.
+> "왜"의 배경은 [`docs/PRODUCT.md`](PRODUCT.md), "어떻게 코드를 만지나"는 각 디렉토리의 `CLAUDE.md`에 있다.
+>
+> **각 Phase의 완료 기준은 [`docs/REQUIREMENTS.md`](REQUIREMENTS.md)의 요구사항 ID·인수 기준으로 정본화돼 있다** — Phase 문서의 체크박스가 어느 요구사항에 대응하는지는 그 문서의 §11 추적표에 있다.
 >
 > 기준: 현재 `main` 코드 / 갱신: 2026-07-21
 
