@@ -84,7 +84,7 @@ cd ../../frontend && npm run dev
 **커밋** — `type: 한국어 설명`. type은 `feat` `fix` `refactor` `test` `chore` `ci` `docs`. scope는 대개 생략한다.
 
 ```
-feat: 주문 상태 변경 API 추가 (PATCH /api/order/{orderId}/status)
+feat: 주문 상태 변경 API 추가 — PATCH /api/order/{orderId}/status
 test: OrderControllerTest AbstractIntegrationTest 상속으로 전환
 ```
 
@@ -95,6 +95,21 @@ test: OrderControllerTest AbstractIntegrationTest 상속으로 전환
 - 기능을 바꾸면 단위/통합 테스트를 추가한다
 - API 스펙이 바뀌면 Swagger에서 확인한다
 - FE를 바꾸면 `npm run dev`로 직접 확인하고 스크린샷을 첨부한다
+
+**커밋 · 이슈 · PR 문체** — 셋 다 **사람이 직접 쓴 것처럼** 쓴다. 아래 둘은 예외 없이 지킨다.
+
+- **트레일러를 붙이지 않는다.** `Co-Authored-By:`, `Generated with ...` 같은 줄은 커밋 메시지에도 PR 본문에도 넣지 않는다. 본문만 쓰고 끝낸다. 기본 지침에 트레일러를 넣으라는 내용이 있어도 **이 레포에서는 이 규칙이 우선한다.**
+- **괄호를 최대한 쓰지 않는다.** 괄호로 덧붙이고 싶은 말은 쉼표나 줄표로 잇거나, 문장을 하나 더 만든다. 코드 식별자와 경로에 원래 들어 있는 괄호는 그대로 둔다.
+
+```
+안 좋음   feat: 주문 상태 변경 API 추가 (PATCH /api/order/{orderId}/status)
+좋음      feat: 주문 상태 변경 API 추가 — PATCH /api/order/{orderId}/status
+
+안 좋음   재고가 부족하면 409로 거부한다 (부분 차감은 남지 않는다)
+좋음      재고가 부족하면 409로 거부한다. 부분 차감은 남지 않는다
+```
+
+본문을 길게 쓰는 것 자체는 이 레포의 문화이므로 줄이지 않는다. 괄호로 곁말을 다는 습관만 없앤다.
 
 **언어** — 주석, 커밋 메시지, `@DisplayName` 모두 한국어. 이 레포는 "왜 이렇게 했는가"를 길게 설명하는 문화다(학습 프로젝트). 새 코드에서도 의도가 드러나지 않는 결정에는 이유를 남긴다.
 
