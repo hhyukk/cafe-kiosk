@@ -50,7 +50,7 @@ Route Handler가 하는 일:
 
 **라우트 핸들러의 `params`는 `Promise`다** (Next 16). `context: { params: Promise<{ menuId: string }> }`로 받고 `await` 한다 — `api/menu/[menuId]/route.ts` 참고.
 
-**BFF 패턴이 한 군데 깨져 있다** — 이미지 업로드(`page.tsx:299`, `page.tsx:1048`)는 Route Handler를 거치지 않고 **브라우저에서 `localhost:8080`을 직접 호출한다.** 백엔드 CORS 설정에 의존하고 있는 상태다.
+**BFF 패턴이 한 군데 깨져 있다** — 이미지 업로드(`page.tsx:285`, `page.tsx:1003`)는 Route Handler를 거치지 않고 **브라우저에서 `localhost:8080`을 직접 호출한다.** 백엔드 CORS 설정에 의존하고 있는 상태다.
 
 ## 백엔드 주소가 하드코딩되어 있다
 

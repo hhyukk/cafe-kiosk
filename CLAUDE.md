@@ -20,9 +20,9 @@ Phase 3  동시성 ★ 이 프로젝트의 목적지
 Phase 4  배포 — Flyway, AWS
 ```
 
-Phase 1은 백엔드 절반이 끝났다 — 주문 조회 응답의 상태 노출과 점주용 주문 목록 API(`GET /api/orders`)는 완료, **Spring Security와 화면 3분할이 남았다.**
+Phase 1은 백엔드 절반이 끝났다 — 주문 조회 응답의 상태 노출과 점주용 주문 목록 API(`GET /api/orders`)는 완료, **Spring Security와 화면 3분할이 남았다.** 인증은 JWT로 확정했고 설계 정본은 [`docs/design/jwt-auth.md`](docs/design/jwt-auth.md)에 있다(아직 구현 전).
 
-로드맵과 각 Phase의 진행 상태·완료 기준은 [`docs/ROADMAP.md`](docs/ROADMAP.md)(정본), 제품 배경과 "왜"는 [`docs/PRODUCT.md`](docs/PRODUCT.md)에 있다.
+로드맵과 각 Phase의 진행 상태·완료 기준은 [`docs/ROADMAP.md`](docs/ROADMAP.md)(정본)에 있다 — 인덱스이며, **Phase별 작업 단위·함정·완료 기준은 [`docs/roadmap/phase-{0..4}.md`](docs/roadmap/)에 있다.** 작업을 시작하기 전에 해당 Phase 문서를 읽는다. 제품 배경과 "왜"는 [`docs/PRODUCT.md`](docs/PRODUCT.md).
 
 **Phase 0에서 확정된 것** — `Order.orderNumber`(대기번호, PK에서 파생), `Order.totalPrice`, `OrderItem.orderPrice`(주문 시점 가격 스냅샷). 총액 합산은 `Order.addOrderItem()`이, 가격 스냅샷은 `OrderItem` 생성자가 소유한다. **주문 금액을 서비스에서 직접 계산하지 않는다.**
 
