@@ -29,6 +29,7 @@
 | 대안 흐름, 예외 흐름의 분기 조건 | 엔드포인트 목록, 권한 매트릭스 → [`REQUIREMENTS.md §9`](REQUIREMENTS.md#9-인터페이스-요구사항) |
 | 사전조건, 사후조건 | 클래스, 계층 구조 → [`architecture.md §4`](design/architecture.md) |
 | 유스케이스 → 요구사항 추적 | 진행 상태, PR 단위 → [`ROADMAP.md`](ROADMAP.md) |
+| 분기 조건 그 자체 | 그 분기가 **화면에 어떻게 보이는가** → [`wireframes.md §6`](design/wireframes.md) |
 
 **요구사항 문장을 옮겨 적지 않는다.** 각 단계 옆에는 ID만 단다. 코드 참조는 기존 규약대로 **파일 경로 + 메서드명까지만, 줄 번호 없이** 적는다.
 

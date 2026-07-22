@@ -17,6 +17,7 @@
 | 어느 엔드포인트에 인증이 필요한가 | [`REQUIREMENTS.md §9-2`](../REQUIREMENTS.md#9-2-권한-매트릭스) |
 | 각 기능이 무엇을 만족해야 하는가 | [`REQUIREMENTS.md §5`](../REQUIREMENTS.md#5-기능-요구사항) |
 | 액터가 어떤 순서로 쓰는가, 예외 흐름의 분기 | [`USECASES.md`](../USECASES.md) |
+| 화면이 어떻게 생겼는가, 상태 변형 | [`wireframes.md`](wireframes.md) |
 | 엔티티 필드의 불변식과 소유자 | [`REQUIREMENTS.md §8`](../REQUIREMENTS.md#8-데이터-요구사항) |
 | 지금 어디까지 됐는가 | [`ROADMAP.md`](../ROADMAP.md) + [`roadmap/phase-*.md`](../roadmap/) |
 | JWT 발급, 검증 클래스 상세 | [`jwt-auth.md`](jwt-auth.md) |
