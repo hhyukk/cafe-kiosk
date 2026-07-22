@@ -35,7 +35,7 @@ public class BaseInitData {
     public void work1() {
         // 이 메서드가 심는 것은 메뉴/재고다. 따라서 가드도 메뉴를 세야 한다.
         // 예전엔 customerRepository.count() 를 봤는데, 정작 Customer 를 만들지 않으니
-        // 가드가 항상 0이라 매 기동 재실행됐다 — ddl-auto 를 update 로 바꾸는 순간 메뉴가 무한 증식한다.
+        // 가드가 항상 0이라 매 기동 재실행됐다. ddl-auto 를 update 로 바꾸는 순간 메뉴가 무한 증식한다.
         if (menuRepository.count() > 0) return;
 
         // imgUrl 은 호스트를 붙이지 않은 상대경로다 (FR-FILE-07).

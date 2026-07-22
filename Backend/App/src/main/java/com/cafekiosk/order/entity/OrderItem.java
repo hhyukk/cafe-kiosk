@@ -40,7 +40,7 @@ public class OrderItem extends BaseEntity {
         this.orderPrice = menu.getMenuPrice();
     }
 
-    /** 이 아이템의 소계 — 주문 시점 가격 × 수량. */
+    /** 이 아이템의 소계. 주문 시점 가격 × 수량. */
     public int getSubtotal() {
         return orderPrice * count;
     }

@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# CI 워크플로 — PR / push 시 백엔드 테스트 자동 실행
+# CI 워크플로. PR / push 시 백엔드 테스트 자동 실행
 #
 # 목적:
 #   GitHub에 코드가 올라올 때마다 Backend/App 의 테스트(JUnit + Testcontainers)를
@@ -73,7 +73,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # 4) 테스트 실행 — 이 워크플로의 본체.
+      # 4) 테스트 실행. 이 워크플로의 본체.
       #    - 테스트는 @ActiveProfiles("test") 로 application-test.yml 만 로드하므로
       #      application-dev.yml 의 ${DB_URL} 같은 환경변수나 .env 시크릿이 필요 없다.
       #    - DB 연결은 AbstractIntegrationTest 의 @DynamicPropertySource 가
