@@ -10,8 +10,8 @@ package com.cafekiosk.order.entity;
  * 실제 전이 가능 여부 검증은 {@link Order} 의 전이 메서드에서 수행한다.
  */
 public enum OrderStatus {
-    PENDING,      // (예약) 장바구니 미제출 — 현재 서버에서는 진입하지 않음
-    CONFIRMED,    // 손님 주문 확정 — 서버에 최초 영속되는 상태
+    PENDING,      // (예약) 장바구니 미제출. 현재 서버에서는 진입하지 않음
+    CONFIRMED,    // 손님 주문 확정. 서버에 최초 영속되는 상태
     IN_PROGRESS,  // 점주 접수 후 제조 중
     READY,        // 제조 완료, 픽업 대기
     COMPLETED,    // 픽업 완료

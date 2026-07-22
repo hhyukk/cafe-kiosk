@@ -37,7 +37,7 @@ public class OrderDto {
             String orderNumber,
             int totalPrice
     ) {
-        /** 주문이 성립하지 않은 경우 — 대기번호도 금액도 없다. */
+        /** 주문이 성립하지 않은 경우. 대기번호도 금액도 없다. */
         public static CreateResponse rejected(String message) {
             return new CreateResponse(message, null, 0);
         }
@@ -66,7 +66,7 @@ public class OrderDto {
     }
 
     // 개별 주문(대기번호별) 요약 + 해당 주문의 아이템 목록
-    // orderId·status·orderTime 은 Phase 1에서 추가했다 — 주방 화면이 읽을 데이터다.
+    // orderId, status, orderTime 은 Phase 1에서 추가했다. 주방 화면이 읽을 데이터다.
     public record OrderSummary(
             @NotNull Long orderId,
             @NotNull String orderNumber,

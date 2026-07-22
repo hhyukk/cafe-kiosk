@@ -61,7 +61,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     private Menu menu2;
 
     // 예전엔 @BeforeEach 가 setup() / setUp() 두 개였다(이름만 대소문자 차이).
-    // JUnit 5는 둘 다 실행하고 순서를 보장하지 않아 매 테스트마다 메뉴가 중복 생성됐다 — 하나로 합쳤다.
+    // JUnit 5는 둘 다 실행하고 순서를 보장하지 않아 매 테스트마다 메뉴가 중복 생성됐다. 하나로 합쳤다.
     @BeforeEach
     void setup() {
         mvc = MockMvcBuilders.webAppContextSetup(context).build();
@@ -143,7 +143,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                 )
                 .andDo(print());
 
-        // then — OrderListResponse > orders[0](OrderSummary) > items[0](OrderItemDTO) 구조
+        // then: OrderListResponse > orders[0](OrderSummary) > items[0](OrderItemDTO) 구조
         resultActions
                 .andExpect(handler().handlerType(OrderController.class))
                 .andExpect(handler().methodName("orderList"))
@@ -281,7 +281,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("가격 스냅샷 - 메뉴 가격을 바꿔도 과거 주문 금액은 변하지 않는다")
     void 가격스냅샷_메뉴가격변경이_과거주문에_소급되지_않는다() {
-        // given — setup()이 심은 주문: 아메리카노(3000) x2 + 카페라떼(4000) x1 = 10,000원
+        // given: setup()이 심은 주문: 아메리카노(3000) x2 + 카페라떼(4000) x1 = 10,000원
         String email = "order@example.com";
 
         OrderDto.OrderListResponse 주문직후 = orderService.getOrderList(email);
@@ -290,12 +290,12 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                 .extracting(OrderDto.OrderItemDTO::orderPrice)
                 .containsExactly(3000, 4000);
 
-        // when — 점주가 메뉴 가격을 대폭 인상한다
+        // when: 점주가 메뉴 가격을 대폭 인상한다
         menu1.modify("아메리카노", 9000, "img1", "커피");
         menu2.modify("카페라떼", 9000, "img2", "커피");
         menuRepository.saveAll(List.of(menu1, menu2));
 
-        // then — 이미 지나간 주문의 금액은 그대로여야 한다.
+        // then: 이미 지나간 주문의 금액은 그대로여야 한다.
         // 스냅샷이 없다면 여기서 27,000원(9000x2 + 9000x1)이 나온다.
         OrderDto.OrderListResponse 가격인상후 = orderService.getOrderList(email);
         assertThat(가격인상후.orders().get(0).totalPrice()).isEqualTo(10000);
@@ -469,7 +469,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     // setup()이 만든 CONFIRMED 주문 1건만 존재하는 상태에서 시작한다.
 
     @Test
-    @DisplayName("주문 목록 조회 - status 미지정이면 전체를 반환하고 orderId·status·orderTime 이 내려온다")
+    @DisplayName("주문 목록 조회 - status 미지정이면 전체를 반환하고 orderId, status, orderTime 이 내려온다")
     void getOrders_noStatus_exposesOrderIdStatusOrderTime() throws Exception {
         mvc.perform(get("/api/orders"))
                 .andDo(print())
@@ -478,11 +478,11 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resultCode").value("200-1"))
                 .andExpect(jsonPath("$.data.length()").value(1))
-                // Phase 1-1 의 진짜 목표 — 이 세 필드가 실제로 응답에 담긴다
+                // Phase 1-1 의 진짜 목표. 이 세 필드가 실제로 응답에 담긴다
                 .andExpect(jsonPath("$.data[0].orderId").isNumber())
                 .andExpect(jsonPath("$.data[0].status").value("CONFIRMED"))
                 .andExpect(jsonPath("$.data[0].orderTime").isNotEmpty())
-                // 기존 필드도 유지된다 — 아메리카노(3000) x2 + 카페라떼(4000) x1 = 10,000원
+                // 기존 필드도 유지된다. 아메리카노(3000) x2 + 카페라떼(4000) x1 = 10,000원
                 .andExpect(jsonPath("$.data[0].orderNumber").isNotEmpty())
                 .andExpect(jsonPath("$.data[0].totalPrice").value(10000))
                 .andExpect(jsonPath("$.data[0].items.length()").value(2));
@@ -491,7 +491,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("주문 목록 조회 - status 필터는 해당 상태의 주문만 반환한다")
     void getOrders_filterByStatus() throws Exception {
-        // given — setup 주문을 CONFIRMED → IN_PROGRESS 로 전이
+        // given: setup 주문을 CONFIRMED → IN_PROGRESS 로 전이
         orderService.changeStatus(seededOrderId(), OrderStatus.IN_PROGRESS);
 
         // when: IN_PROGRESS 로 조회하면 전이된 주문이 보인다

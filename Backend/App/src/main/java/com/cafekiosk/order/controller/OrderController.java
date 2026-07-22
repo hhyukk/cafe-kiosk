@@ -77,7 +77,7 @@ public class OrderController {
 
     @Operation(
             summary = "주문 목록 조회 (점주/주방)",
-            description = "점주·바리스타가 볼 전체 주문 목록입니다. status 를 지정하면 해당 상태만, 생략하면 전체를 "
+            description = "점주와 바리스타가 볼 전체 주문 목록입니다. status 를 지정하면 해당 상태만, 생략하면 전체를 "
                     + "주문 시각 오름차순(먼저 들어온 순)으로 반환합니다. 목록이 비어 있어도 200 + 빈 배열입니다."
     )
     @ApiResponses(value = {

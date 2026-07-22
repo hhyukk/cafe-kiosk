@@ -129,7 +129,7 @@ public class OrderService {
                 ? orderRepository.findAllByOrderByOrderTimeAsc()
                 : orderRepository.findByStatusOrderByOrderTimeAsc(status);
 
-        // N+1: order 별로 orderItems·menu 를 lazy 순회한다. 주방 활성 주문은 소량이라
+        // N+1: order 별로 orderItems 와 menu 를 lazy 순회한다. 주방 활성 주문은 소량이라
         //      Phase 1 에서는 허용한다. fetch join 최적화는 이후 Phase 로 미룬다.
         List<OrderDto.OrderSummary> result = new ArrayList<>();
         for (Order order : orders) {

@@ -1,12 +1,12 @@
-# 점주 인증 설계 — JwtTokenProvider
+# 점주 인증 설계: JwtTokenProvider
 
 > ⚠️ **이 문서는 구현 설명서가 아니라 [Phase 1](../roadmap/phase-1.md)의 설계 정본이다.**
-> 작성 시점에 대응 코드는 **아직 없다** — `com.cafekiosk.auth` 패키지 자체가 존재하지 않고,
+> 작성 시점에 대응 코드는 **아직 없다.** `com.cafekiosk.auth` 패키지 자체가 존재하지 않고,
 > `build.gradle.kts`에 jjwt 의존성도 없다. Phase 1에서 이 문서대로 구현한다.
 > (구현이 끝나면 이 경고를 지운다.)
 
 > 위치(예정): `com.cafekiosk.auth.jwt.JwtTokenProvider`
-> 역할: **Access 토큰 발급/검증 전용 컴포넌트**. 점주(Owner) 식별자를 JWT 클레임에 담아 HS256으로 서명하고, 들어오는 토큰의 서명·만료를 검증한다.
+> 역할: **Access 토큰 발급/검증 전용 컴포넌트**. 점주(Owner) 식별자를 JWT 클레임에 담아 HS256으로 서명하고, 들어오는 토큰의 서명, 만료를 검증한다.
 
 ---
 
@@ -24,14 +24,14 @@ JWT를 "만드는 쪽(`createAccessToken`)"과 "검증하고 까보는 쪽(`vali
 
 [요청]    BFF 가 Authorization: Bearer <JWT> 헤더를 붙여 요청
             └─> JwtAuthenticationFilter
-                  ├─> validate(token)        // 서명·만료 OK?
+                  ├─> validate(token)        // 서명과 만료 OK?
                   └─> getPrincipal(token)     // 클레임에서 OwnerPrincipal 복원
                         └─> SecurityContext 에 ROLE_OWNER 인증 세팅
 ```
 
-발급은 `AuthService`에서, 검증은 `JwtAuthenticationFilter`에서 이 클래스를 호출한다. JwtTokenProvider 자신은 **누가 부르는지 모른다** — 토큰을 다루는 순수 책임만 가진다.
+발급은 `AuthService`에서, 검증은 `JwtAuthenticationFilter`에서 이 클래스를 호출한다. JwtTokenProvider 자신은 **누가 부르는지 모른다.** 토큰을 다루는 순수 책임만 가진다.
 
-> **토큰을 보관하는 주체는 브라우저가 아니라 BFF다** — FR-AUTH-11. Next.js Route Handler가 발급받은 토큰을 `httpOnly` 쿠키에 심고, 이후 요청마다 그 쿠키를 읽어 헤더로 바꿔 붙인다. 브라우저 JS는 토큰 문자열에 닿지 못한다. 이 클래스 입장에서는 달라지는 것이 없지만, **누가 토큰을 들고 있느냐가 §10의 결론을 바꾼다.**
+> **토큰을 보관하는 주체는 브라우저가 아니라 BFF다.** FR-AUTH-11. Next.js Route Handler가 발급받은 토큰을 `httpOnly` 쿠키에 심고, 이후 요청마다 그 쿠키를 읽어 헤더로 바꿔 붙인다. 브라우저 JS는 토큰 문자열에 닿지 못한다. 이 클래스 입장에서는 달라지는 것이 없지만, **누가 토큰을 들고 있느냐가 §10의 결론을 바꾼다.**
 >
 > 이 흐름이 시스템 전체 어디에 놓이는지는 [`architecture.md §5-4`](architecture.md#5-4-인증된-요청)에 있다.
 
@@ -62,13 +62,13 @@ public JwtTokenProvider(
 - HS256(HMAC-SHA256) 알고리즘은 **최소 256bit = 32byte** 길이의 키를 요구한다.
 - 짧은 문자열을 그냥 키로 쓰면 jjwt가 `WeakKeyException`을 던진다.
 - `application.yml`의 dev 기본 시크릿이 32byte 이상이라 이 요구치를 만족한다.
-- 운영에서는 반드시 `JWT_SECRET` 환경변수로 충분히 긴 랜덤 값을 주입해야 한다. (CLAUDE.md Hard Rule 7 — 시크릿 커밋 금지)
+- 운영에서는 반드시 `JWT_SECRET` 환경변수로 충분히 긴 랜덤 값을 주입해야 한다. 시크릿을 커밋하지 않는다는 규칙이 `CLAUDE.md`에 있다.
 
 > 생성자에서 키를 **한 번만 만들어 재사용**한다. 매 요청마다 키를 새로 생성하지 않으므로 비용이 낮다. `@Component`라 싱글톤으로 관리된다.
 
 ---
 
-## 4. 토큰 발급 — `createAccessToken`
+## 4. 토큰 발급: `createAccessToken`
 
 ```java
 public String createAccessToken(Long ownerId, String email) {
@@ -108,7 +108,7 @@ eyJhbGciOiJIUzI1NiJ9 . eyJzdWIiOiJ... . 3x8s_Signature...
 
 ---
 
-## 5. 토큰 검증 — `validate`
+## 5. 토큰 검증: `validate`
 
 ```java
 public boolean validate(String token) {
@@ -131,7 +131,7 @@ public boolean validate(String token) {
 
 ---
 
-## 6. 신원 복원 — `getPrincipal`
+## 6. 신원 복원: `getPrincipal`
 
 ```java
 public OwnerPrincipal getPrincipal(String token) {
@@ -153,21 +153,21 @@ public OwnerPrincipal getPrincipal(String token) {
 
 ---
 
-## 7. 내부 헬퍼 — `parse`
+## 7. 내부 헬퍼: `parse`
 
 ```java
 private Claims parse(String token) {
     return Jwts.parser()
             .verifyWith(key)            // 같은 대칭키로 서명 검증
             .build()
-            .parseSignedClaims(token)   // 서명·만료 검증 + Claims 추출
+            .parseSignedClaims(token)   // 서명과 만료 검증 + Claims 추출
             .getPayload();
 }
 ```
 
 - `validate`와 `getPrincipal`이 공유하는 핵심 로직.
 - `parseSignedClaims`는 **서명 검증과 만료 검증을 동시에** 수행하고, 실패 시 적절한 `JwtException`을 던진다.
-- `private`이라 외부에 노출되지 않는다 — 검증은 항상 `validate`/`getPrincipal`을 통해서만.
+- `private`이라 외부에 노출되지 않는다. 검증은 항상 `validate`/`getPrincipal`을 통해서만.
 
 ---
 
@@ -175,11 +175,11 @@ private Claims parse(String token) {
 
 | 결정 | 이유 |
 |------|------|
-| **stateless** (검증 시 DB 미조회) | 토큰 서명·만료만으로 신원 보장. 세션 저장소가 필요 없어 수평 확장에 유리. |
-| **HS256 (대칭키)** | 단일 서버/단일 발급자 구조에서 충분. 키 하나로 발급·검증. (다중 서비스가 검증만 해야 하면 RS256 비대칭키 고려) |
+| **stateless** (검증 시 DB 미조회) | 토큰 서명, 만료만으로 신원 보장. 세션 저장소가 필요 없어 수평 확장에 유리. |
+| **HS256 (대칭키)** | 단일 서버/단일 발급자 구조에서 충분. 키 하나로 발급, 검증. (다중 서비스가 검증만 해야 하면 RS256 비대칭키 고려) |
 | **검증 예외를 boolean으로 흡수** | 호출부(필터)가 예외 처리 부담 없이 분기. |
 | **`Number` → `longValue`** | JSON 역직렬화의 Integer/Long 함정 회피. |
-| **발급/검증 책임만 가짐** | 인증 흐름(필터)·인가 정책(SecurityConfig)과 분리. SRP 준수. |
+| **발급/검증 책임만 가짐** | 인증 흐름(필터), 인가 정책(SecurityConfig)과 분리. SRP 준수. |
 
 ---
 
@@ -197,7 +197,7 @@ private Claims parse(String token) {
 
 ## 10. 현재 한계 / 향후 개선 여지
 
-- **Refresh 토큰 없음**: 현재는 Access 토큰(1시간) 단일. 만료 시 재로그인 필요. 추후 Refresh 토큰 + 재발급 엔드포인트 도입 여지. (FR-AUTH-10 — 의도적 단순화)
-- **토큰 무효화는 쿠키 삭제로 대신한다**: stateless 특성상 발급된 토큰은 만료 전까지 유효하다는 사실 자체는 변하지 않는다. 다만 토큰을 브라우저가 아니라 **BFF가 `httpOnly` 쿠키로 들고 있으므로**(FR-AUTH-11), 쿠키를 지우면 그 토큰을 다시 보낼 주체가 사라진다. **Redis 블랙리스트 없이 실질 로그아웃이 성립한다** — FR-AUTH-12.
+- **Refresh 토큰 없음**: 현재는 Access 토큰(1시간) 단일. 만료 시 재로그인 필요. 추후 Refresh 토큰 + 재발급 엔드포인트 도입 여지. FR-AUTH-10의 의도적 단순화다.
+- **토큰 무효화는 쿠키 삭제로 대신한다**: stateless 특성상 발급된 토큰은 만료 전까지 유효하다는 사실 자체는 변하지 않는다. 다만 토큰을 브라우저가 아니라 **BFF가 `httpOnly` 쿠키로 들고 있으므로**(FR-AUTH-11), 쿠키를 지우면 그 토큰을 다시 보낼 주체가 사라진다. **Redis 블랙리스트 없이 실질 로그아웃이 성립한다.** FR-AUTH-12.
   - 남는 한계는 하나다. **유출된 토큰은 만료까지 유효하다.** 쿠키 삭제는 정상 로그아웃을 처리할 뿐 탈취된 토큰을 무효화하지 못한다. 그 시나리오까지 막으려면 블랙리스트가 필요하고, 이 프로젝트에서는 만료 1시간으로 감수한다.
-- **role이 `"OWNER"` 하드코딩**: 역할이 늘어나면 Owner 엔티티의 role 필드로 분리 고려. 현재는 바리스타와 점주를 하나의 역할로 묶는 것이 의도된 설계다 — FR-AUTH-08.
+- **role이 `"OWNER"` 하드코딩**: 역할이 늘어나면 Owner 엔티티의 role 필드로 분리 고려. 현재는 바리스타와 점주를 하나의 역할로 묶는 것이 의도된 설계다. FR-AUTH-08.

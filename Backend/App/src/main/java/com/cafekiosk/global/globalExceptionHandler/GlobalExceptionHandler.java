@@ -67,7 +67,7 @@ public class GlobalExceptionHandler {
         );
     }
 
-    // 409 : CONFLICT — 현재 주문 상태와 충돌하는 전이 시도
+    // 409 : CONFLICT. 현재 주문 상태와 충돌하는 전이 시도
     @ExceptionHandler(InvalidOrderStatusTransitionException.class)
     public ResponseEntity<RsData<Void>> handle(InvalidOrderStatusTransitionException ex) {
         return new ResponseEntity<>(
@@ -79,7 +79,7 @@ public class GlobalExceptionHandler {
         );
     }
 
-    // 400 : 쿼리 파라미터·경로 변수의 타입 변환 실패 (예: ?status=NOPE → OrderStatus 변환 불가).
+    // 400 : 쿼리 파라미터와 경로 변수의 타입 변환 실패 (예: ?status=NOPE → OrderStatus 변환 불가).
     //       바디 검증용 MethodArgumentNotValidException 과 다른 계열이라 별도 매핑이 필요하다.
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<RsData<Void>> handle(MethodArgumentTypeMismatchException ex) {
