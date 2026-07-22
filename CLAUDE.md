@@ -34,6 +34,7 @@ Phase 1은 백엔드 절반이 끝났다 — 주문 조회 응답의 상태 노�
 | `frontend/` | Next.js 16 App Router 키오스크 UI (3000) |
 | `docs/PRODUCT.md` | 제품 기획 · "왜" (정체성 · 스코프아웃 · 목표 모델) |
 | `docs/REQUIREMENTS.md` | 요구사항명세 · "무엇" (요구사항 ID · 인수 기준 · 권한 매트릭스) |
+| `docs/USECASES.md` | 유스케이스 명세 · "누가 어떤 순서로" (액터별 주 흐름 · 대안 · 예외 흐름) |
 | `docs/ROADMAP.md` | 로드맵 · Phase별 진행 상태 (정본) |
 | `docs/design/architecture.md` | 시스템 구성도 · "어떻게 조립돼 있는가" (런타임 · 계층 · 요청 흐름 · 데이터 모델) |
 | `.github/` | CI + PR / 이슈 템플릿 |

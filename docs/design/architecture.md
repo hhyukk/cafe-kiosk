@@ -16,6 +16,7 @@
 | API 엔드포인트 목록 · 목표 경로 | [`REQUIREMENTS.md §9-1`](../REQUIREMENTS.md#9-1-api--현재--목표) |
 | 어느 엔드포인트에 인증이 필요한가 | [`REQUIREMENTS.md §9-2`](../REQUIREMENTS.md#9-2-권한-매트릭스) |
 | 각 기능이 구현됐는가 | [`REQUIREMENTS.md §5`](../REQUIREMENTS.md#5-기능-요구사항) |
+| 액터가 어떤 순서로 쓰는가 · 예외 흐름의 분기 | [`USECASES.md`](../USECASES.md) |
 | 엔티티 필드의 불변식과 소유자 | [`REQUIREMENTS.md §8`](../REQUIREMENTS.md#8-데이터-요구사항) |
 | 언제 무엇을 하는가 | [`ROADMAP.md`](../ROADMAP.md) + [`roadmap/phase-*.md`](../roadmap/) |
 | JWT 발급·검증 클래스 상세 | [`jwt-auth.md`](jwt-auth.md) |
