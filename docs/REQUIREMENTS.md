@@ -56,9 +56,11 @@
 
 | 용어 | 정의 |
 | --- | --- |
-| **대기번호** (`orderNumber`) | 손님이 받아가는 번호. 주문 PK에서 파생한 4자리 문자열. 카운터에서 이 번호로 음료를 내준다. 배송 추적번호가 아니다 |
-| **가격 스냅샷** (`orderPrice`) | 주문이 성립한 시점의 메뉴 가격. 이후 메뉴 가격이 바뀌어도 과거 주문 금액은 변하지 않는다 |
+| **대기번호** (`orderNumber`) | 손님이 받아가는 번호. 주문 PK에서 파생한 **최소 4자리** 문자열이며 자리수가 모자라면 0으로 채운다. 만 번째 주문부터는 다섯 자리가 된다. 카운터에서 이 번호로 음료를 내준다. 배송 추적번호가 아니다 |
+| **주문 스냅샷** (`orderPrice`, `menuName`) | 주문이 성립한 시점의 메뉴 가격과 이름. 이후 메뉴가 바뀌거나 판매중지돼도 과거 주문의 금액과 표시는 변하지 않는다 |
 | **재고** (`Stock.quantity`) | 메뉴별 현재 남은 수량. 이력 테이블은 두지 않는다. 현재 수량만 다룬다 |
+| **품절** | 재고가 0인 상태. 재고를 채우면 다시 팔린다. **판매중지와 다르다** |
+| **판매중지** | 점주가 그 메뉴를 더 이상 팔지 않기로 한 상태. 손님 목록에서 사라지지만 행은 남는다. 이 레포에서 "메뉴 삭제"는 이것을 뜻한다. §5-3 |
 | **점주 / 바리스타** | 제품상으로는 다른 역할이지만, **인증상으로는 `ROLE_OWNER` 하나다** (§3) |
 | **BFF** | 프론트의 `src/app/api/*` Route Handler. 브라우저와 백엔드 사이의 유일한 통로이며 **토큰의 보관처**이기도 하다 |
 | **CONFIRMED** | "결제까지 끝난 상태". 실결제는 스코프아웃이므로 결제 성공을 가정하고 이 상태로 주문이 생성된다 |
@@ -112,10 +114,15 @@
 | FR-KSK-04 | 대기번호는 **전용 완료 화면에 크게** 표시된다. `alert`를 쓰지 않는다 | 필수 | `/order/{orderNumber}` |
 | FR-KSK-05 | 손님 화면에 **메뉴 추가, 수정, 삭제 UI가 노출되지 않는다** | 필수 | `/`. 관리자 기능은 `/admin`에만 있다 |
 | FR-KSK-06 | 손님은 받은 **대기번호로 자기 주문의 현재 상태**를 조회할 수 있다 | 필수 | `OrderController.getOrderByNumber`, `/order/{orderNumber}` |
-| FR-KSK-07 | 한 주문의 **총 수량은 1~100개**다. 벗어나면 400 | 필수 | `OrderController.createOrder`, `app/api/order/route.ts` |
+| FR-KSK-07 | **각 아이템의 수량은 1개 이상**이고, 한 주문의 **총 수량은 1~100개**다. 벗어나면 400 | 필수 | `OrderDto.OrderItemRequest`, `OrderDto.CreateRequest`의 검증 애노테이션, `app/api/order/route.ts` |
 | FR-KSK-08 | **품절 메뉴는 품절로 표시**되고 장바구니에 담을 수 없다 | 필수 | `/`, `MenuDto.MenuListResponse`의 `soldOut` |
-| FR-KSK-09 | 손님은 **남의 주문 내역을 조회할 수 없다.** 이메일로 주문을 통째로 조회하는 경로는 존재하지 않는다 | 필수 | 대기번호 단건 조회만 공개. §9-1 |
+| FR-KSK-09 | **이메일로 주문 내역을 통째로 조회하는 경로가 존재하지 않는다.** 손님에게 열린 것은 대기번호 단건 조회뿐이다 | 필수 | §9-1. FR-KSK-11과 한 몸 |
 | FR-KSK-10 | 주문 화면, 완료 화면, 조회 화면의 텍스트는 한국어다 | 권장 | `/`, `/order/{orderNumber}` |
+| FR-KSK-11 | 대기번호 단건 조회 응답에 **손님 이메일 등 개인 식별정보를 담지 않는다** | 필수 | `OrderDto.OrderSummary`. 아래 참고 |
+
+> **손님이 익명인데 왜 이메일을 받는가.** 이메일은 **주문 주체를 식별하는 값일 뿐** 회원 식별자가 아니다. `Customer`는 그 값으로 만들어지고, 같은 이메일의 두 번째 주문은 기존 행을 재사용한다. 이 진술을 남기는 이유는 둘이다. 하나는 FR-KSK-09가 이메일 기반 조회를 없앤 뒤로 이 값이 화면 어디에도 다시 나타나지 않아서, **읽는 사람이 지워도 되는 필드로 오해하기 쉽다는 것**이다. 다른 하나는 그 `findByEmail` 후 `save` 경로가 이 레포에서 재고 말고 유일하게 남은 경쟁 조건이라는 것이다. 이메일을 지우면 NFR-CON-06과 AC-11이 함께 사라진다. **손님 이메일의 보존, 파기 정책은 스코프아웃이다**(§10).
+>
+> **FR-KSK-11은 FR-KSK-09가 실제로 보장하는 선을 그린다.** 대기번호는 PK 파생이라 0001부터 단조 증가하고 단건 조회는 익명 공개이므로, **번호를 세면 남의 주문 상태와 금액이 보인다.** 이 사실을 막지 않기로 했고(§10), 대신 막는 것은 그 응답에 개인 식별정보가 섞이는 일이다. 카운터에서 소리내어 부르는 번호는 이미 공개 정보이지만 손님의 이메일은 그렇지 않다.
 
 ### 5-2. FR-ORD: 주문, 상태머신, 금액
 
@@ -126,6 +133,7 @@
 | FR-ORD-03 | **허용되지 않은 전이는 409로 거부되고 상태가 바뀌지 않는다** | 필수 | `order/exception/InvalidOrderStatusTransitionException` → `global/globalExceptionHandler/GlobalExceptionHandler` |
 | FR-ORD-04 | **상태 전이 규칙은 `Order` 엔티티가 소유한다.** 서비스, 컨트롤러가 `status`를 직접 대입하지 않는다 | 필수 | `Order`, `order/service/OrderService.changeStatus` |
 | FR-ORD-05 | 주문 생성 시 각 아이템의 **주문 시점 가격을 스냅샷**한다 | 필수 | `order/entity/OrderItem` 생성자 |
+| FR-ORD-14 | 주문 아이템은 **주문 시점의 메뉴 이름도 스냅샷**한다. 이름이 바뀌거나 메뉴가 판매중지돼도 과거 주문의 표시가 변하지 않는다 | 필수 | `OrderItem` 생성자, `OrderService.toItemDTO` |
 | FR-ORD-06 | **주문 총액은 아이템 스냅샷 소계의 합과 항상 일치한다.** 총액은 `Order.addOrderItem()`으로만 늘어난다 | 필수 | `Order.addOrderItem`, `OrderItem.getSubtotal` |
 | FR-ORD-07 | 대기번호는 **PK에서 파생**되어 전역 유일하고 단조 증가한다. "오늘 주문 수 + 1" 방식을 쓰지 않는다 | 필수 | `Order.assignOrderNumber` |
 | FR-ORD-08 | 주문 조회 응답은 `orderId`, `orderNumber`, `status`, `orderTime`, `totalPrice`, `items`를 포함한다 | 필수 | `OrderDto.OrderSummary` |
@@ -134,23 +142,35 @@
 | FR-ORD-11 | 주문이 취소되면 **차감된 재고가 복구된다** | 필수 | `OrderService.changeStatus`. FR-STK-05와 한 몸 |
 | FR-ORD-12 | 주문 생성은 **원자적**이다. 아이템 중 하나라도 실패하면 주문 전체가 성립하지 않는다 | 필수 | `OrderService.createOrder`의 트랜잭션 경계 |
 | FR-ORD-13 | 상태는 다섯 개뿐이다. `CONFIRMED`, `IN_PROGRESS`, `READY`, `COMPLETED`, `CANCELLED`. **장바구니 미제출을 뜻하는 상태를 두지 않는다** | 필수 | `order/entity/OrderStatus` |
+| FR-ORD-15 | 주문 API 응답도 **`RsData<T>`로 통일된다.** raw record를 반환하지 않는다 | 필수 | `OrderController`. §9-5 |
 
 > **설계 소유권.** 상태 전이와 금액 계산은 **엔티티가 소유한다.** 서비스는 엔티티를 조회해 메서드를 호출할 뿐이다. 총액이 아이템과 어긋날 수 있는 **경로 자체를 없애는 것**이 목적이다. (`Backend/App/CLAUDE.md`)
 >
 > **FR-ORD-13은 코드 정리가 아니라 제품 모델의 진술이다.** 장바구니는 브라우저 안에서만 존재하고 서버는 그것을 모른다. UC-01의 성공 사후조건이 *"서버 상태는 아무것도 바뀌지 않는다"*인 이유다. 서버에 "미제출 장바구니" 상태가 있으면 그 조건이 거짓이 되고, 다음 사람이 장바구니를 서버에 저장하는 방향으로 읽는다.
+>
+> **FR-ORD-14는 FR-ORD-05가 반만 지켜지고 있어서 세웠다.** 가격은 생성자가 메뉴에서 복사해 두는데 이름은 조회할 때마다 현재 메뉴에서 읽는다. 그래서 메뉴 이름을 고치면 **과거 주문의 표시가 소급 변경된다.** 금액이 안 변하니 회귀 테스트가 잡지 못하고, 영수증에서 이름만 조용히 바뀐다. 판매중지(FR-MNU-09)까지 들어오면 더 분명해진다. 팔지 않는 메뉴를 담은 주문을 조회할 때 이름을 어디서 읽을 것인가. 스냅샷이 답이다.
+>
+> **FR-ORD-15는 §9-5의 응답 규약을 소화할 ID가 없어서 세웠다.** 규약은 "모든 API 응답은 `RsData`"라고 적혀 있는데, 그것을 요구하는 요구사항은 메뉴 한정의 FR-MNU-07뿐이었다. 규약만 있고 요구사항이 없으면 **어느 PR도 그 일을 자기 일로 여기지 않는다.** 주문 API의 `CreateResponse`와 `ChangeStatusResponse`가 그렇게 남아 있었다.
 
 ### 5-3. FR-MNU: 메뉴
 
 | ID | 요구사항 | 우선 | 근거 |
 | --- | --- | --- | --- |
-| FR-MNU-01 | 누구나(익명 포함) 메뉴 목록을 조회할 수 있다 | 필수 | `menu/controller/MenuController.getMenus` |
+| FR-MNU-01 | 누구나(익명 포함) **판매중인** 메뉴 목록을 조회할 수 있다. 판매중지된 메뉴는 이 목록에 없다 | 필수 | `menu/controller/MenuController.getMenus` |
 | FR-MNU-02 | **인증된 점주만** 메뉴를 등록, 수정, 삭제할 수 있다 | 필수 | `global/config/SecurityConfig`의 `hasRole("OWNER")` |
-| FR-MNU-03 | 메뉴 가격은 **0원 이상 10,000,000원 이하**다. 벗어나면 400 | 필수 | `MenuController.createMenu`, `app/api/menu/route.ts` |
+| FR-MNU-03 | 메뉴 가격은 **0원 이상 10,000,000원 이하**다. 벗어나면 400. 등록과 수정에 같은 경계를 쓴다 | 필수 | `menu/dto/CreateMenuRequestDto`, `MenuDto.MenuModifyRequest`의 검증 애노테이션, `app/api/menu/route.ts` |
 | FR-MNU-04 | 메뉴 등록, 수정 시 이름, 카테고리, 가격은 필수이며 서버가 검증한다 | 필수 | `menu/dto/CreateMenuRequestDto`, `MenuDto.MenuModifyRequest` + `@Valid` |
-| FR-MNU-05 | 존재하지 않는 메뉴를 수정, 삭제하면 **404**다 | 필수 | `MenuService.modify`, `MenuService.deleteMenu` |
-| FR-MNU-06 | **메뉴 가격을 바꿔도 과거 주문 금액은 변하지 않는다** | 필수 | FR-ORD-05/09가 보장. 회귀 테스트 `order/controller/OrderControllerTest` |
-| FR-MNU-07 | 메뉴 API 경로는 REST 스타일이고 응답은 `RsData<T>`로 통일된다 | 권장 | `MenuController`. §9-1, §9-5 |
+| FR-MNU-05 | 존재하지 않는 메뉴를 수정, 삭제하면 **404**다. 이미 판매중지된 메뉴를 다시 삭제하는 요청은 **멱등하게 성공**한다 | 필수 | `MenuService.modify`, `MenuService.deleteMenu` |
+| FR-MNU-06 | **메뉴 가격이나 이름을 바꿔도 과거 주문 내역은 변하지 않는다** | 필수 | FR-ORD-05/09/14가 보장. 회귀 테스트 `order/controller/OrderControllerTest` |
+| FR-MNU-07 | 메뉴 API 경로는 REST 스타일이고 응답은 `RsData<T>`로 통일된다 | 필수 | `MenuController`. §9-1, §9-5 |
 | FR-MNU-08 | `Menu.email`은 **"누가 등록했는가"의 기록**일 뿐이며 권한 판단에 쓰이지 않는다. 값은 인증된 점주에게서 서버가 채운다 | 필수 | `menu/entity/Menu`, `MenuService.create` |
+| FR-MNU-09 | **메뉴 삭제는 판매를 멈추는 것이다.** 손님 목록에서 사라지지만 행은 남고, 그 메뉴를 참조하는 과거 주문과 재고 행이 깨지지 않는다 | 필수 | `menu/entity/Menu`, `MenuService.deleteMenu`. 아래 참고 |
+
+> **FR-MNU-09가 없으면 FR-MNU-06과 FR-FILE-08이 성립하지 않는다.** 두 요구사항은 *"메뉴를 지워도 그 메뉴가 담긴 과거 주문은 남는다"*를 전제하는데, 행을 실제로 지우면 `OrderItem`이 그 메뉴를 참조하고 있어 삭제 자체가 막히거나 과거 주문이 함께 무너진다. `Stock`도 메뉴에 1:1로 매달려 있어 같은 문제를 만든다. **전제를 요구사항으로 승격하는 것**이 이 항목이다.
+>
+> **판매중지는 품절이 아니다.** 품절은 재고가 0인 상태라 채우면 되돌아오고, 판매중지는 점주의 결정이라 재고와 무관하다. 둘을 한 필드로 합치면 *"재고를 채웠더니 단종한 메뉴가 되살아나는"* 일이 벌어진다. §2.
+>
+> **되살리는 기능은 요구사항이 아니다.** 판매중지된 메뉴를 다시 파는 화면은 만들지 않는다. 행이 남는 것은 참조 무결성을 위한 것이지 복구를 위한 것이 아니다. §10.
 
 ### 5-4. FR-STK: 재고
 
@@ -163,8 +183,10 @@
 | FR-STK-05 | 주문이 취소되면 그 주문의 수량만큼 재고가 복구된다. **`CANCELLED` 전이가 성공했을 때만** 복구한다 | 필수 | `OrderService.changeStatus` |
 | FR-STK-06 | **재고는 어떤 경로로도 음수가 되지 않는다.** 동시 요청에서도 마찬가지다 | 필수 | `Stock.decrease` + NFR-CON-01 |
 | FR-STK-07 | 메뉴 조회 응답에 **재고 수량과 품절 여부**가 포함된다 | 필수 | `menu/dto/MenuDto.MenuListResponse` |
-| FR-STK-08 | 점주는 재고를 조정할 수 있다 | 필수 | `stock/controller/StockController` |
+| FR-STK-08 | 점주는 재고를 **증감으로** 조정한다. 바꿀 양을 부호 있는 값으로 보내며, 최종 수량을 직접 지정하지 않는다. 결과가 음수가 되는 조정은 **409**로 거부된다 | 필수 | `stock/controller/StockController` → `Stock.increase` / `Stock.decrease` |
 | FR-STK-09 | 재고 **이력**은 관리하지 않는다. 현재 수량만 다룬다 | 없음 | 의도적 비요구사항. §10 |
+
+> **FR-STK-08이 증감인 이유는 FR-STK-04 때문이다.** 최종 수량을 직접 받으면 `Stock`에 수량을 대입하는 **세 번째 경로**가 생기고, 그 경로만 음수 검사를 스스로 해야 한다. 증감으로 받으면 점주의 조정이든 손님의 주문이든 재고를 건드리는 문은 `decrease`와 `increase` 둘뿐이라, 음수 금지가 한 곳에서만 지켜진다. 점주 화면이 실사 수량을 다루고 싶다면 **화면이 차이를 계산해서 보낸다.** 불변식을 지키는 쪽이 서버다.
 
 ### 5-5. FR-AUTH: 인증, 인가
 
@@ -173,7 +195,7 @@
 | FR-AUTH-01 | 점주는 이메일, 비밀번호로 로그인해 **Access 토큰**을 받는다 | 필수 | `auth/controller/AuthController`, `auth/service/AuthService`. 설계 정본 [`design/jwt-auth.md`](design/jwt-auth.md) |
 | FR-AUTH-02 | **비밀번호는 해시로만 저장한다.** 시드 계정도 평문 금지 | 필수 | `owner/entity/Owner`, `global/initData/BaseInitData` |
 | FR-AUTH-03 | 인증은 **stateless JWT(HS256)**이며 서버 세션을 두지 않는다 | 필수 | `auth/jwt/JwtTokenProvider` |
-| FR-AUTH-04 | **점주 전용 API를 토큰 없이 호출하면 401**이다 | 필수 | `SecurityConfig` |
+| FR-AUTH-04 | **점주 전용 API를 토큰 없이 호출하면 401**이다. 403이 아니다. 이를 위해 `AuthenticationEntryPoint`를 **명시적으로 구성한다** | 필수 | `SecurityConfig`. 아래 참고 |
 | FR-AUTH-05 | **인가를 요청 본문의 이메일 문자열 비교로 하지 않는다** | 필수 | `auth/JwtAuthenticationFilter` → `SecurityContext` |
 | FR-AUTH-06 | **손님 엔드포인트는 인증을 요구하지 않는다.** 인증 도입이 손님 흐름을 막으면 안 된다 | 필수 | `SecurityConfig`의 `permitAll`. §9-2 |
 | FR-AUTH-07 | 토큰 클레임에 **민감정보를 담지 않는다.** 식별자, 역할만 담는다 | 필수 | `JwtTokenProvider.createAccessToken`. [`design/jwt-auth.md`](design/jwt-auth.md) |
@@ -186,12 +208,14 @@
 > **FR-AUTH-11이 C-04의 진짜 이유다.** 브라우저가 토큰 문자열을 들고 있으면 `Authorization` 헤더를 직접 만들고 싶어지고, 그 순간 BFF를 우회할 동기가 생긴다. 토큰을 `httpOnly` 쿠키에 가두면 우회할 방법 자체가 없어지고 XSS로 새지도 않는다.
 >
 > **FR-AUTH-12는 stateless의 한계를 우회한다.** 발급된 토큰은 만료까지 유효하다는 사실은 변하지 않지만, 브라우저에서 쿠키가 사라지면 그 토큰을 다시 보낼 주체가 없다. Redis 블랙리스트 없이 실질 로그아웃이 성립하는 이유다.
+>
+> **FR-AUTH-04의 "403이 아니다"는 그냥 하는 말이 아니다.** Spring Security는 폼 로그인이나 HTTP Basic 같은 기본 인증 수단을 쓰지 않으면 진입점이 없어서, 인증 없는 요청을 **403으로 돌려보낸다.** 필터와 인가 규칙만 얹고 끝내면 AC-12가 구현 직후 그대로 실패한다. 401을 내려면 `exceptionHandling`에 진입점을 직접 붙여야 한다. 인증이 없다는 것과 권한이 모자란다는 것은 다른 사건이고, **BFF가 로그인 화면으로 보낼지 말지를 이 코드로 판단한다.**
 
 ### 5-6. FR-KIT: 주방 화면
 
 | ID | 요구사항 | 우선 | 근거 |
 | --- | --- | --- | --- |
-| FR-KIT-01 | 바리스타는 `/kitchen`에서 **들어온 주문 목록**을 본다 | 필수 | `/kitchen` |
+| FR-KIT-01 | 바리스타는 `/kitchen`에서 **아직 끝나지 않은 주문 목록**을 본다. 완료, 취소된 주문은 이 화면에 없다. **거르는 주체는 화면이고 API는 FR-ADM-05와 같은 것을 쓴다** | 필수 | `/kitchen` |
 | FR-KIT-02 | 주문 목록은 **주문 시각 오름차순(FIFO)**이다. 먼저 들어온 주문을 먼저 만든다 | 필수 | `OrderService.getOrdersByStatus`, `OrderRepository.findAllByOrderByOrderTimeAsc` |
 | FR-KIT-03 | 목록을 상태로 필터링할 수 있고, **결과가 비어도 200 + 빈 배열**이다 | 필수 | `OrderController.getOrders`. §9-5 |
 | FR-KIT-04 | 바리스타는 주문을 `제조중 → 준비완료 → 픽업완료`로 전이시킨다 | 필수 | `OrderController.changeStatus`, `/kitchen` |
@@ -227,22 +251,25 @@
 
 > **FR-FILE-07은 코드가 아니라 데이터에 박히는 결함이라 따로 세웠다.** 업로드 응답의 URL이 그대로 `Menu.imgUrl` 컬럼에 저장되므로, 여기서 호스트를 붙이면 배포 환경에서 이미지가 전부 깨진다. 코드의 하드코딩은 `grep`으로 걷어낼 수 있지만 이미 저장된 행은 그렇지 않다. 그래서 요구사항을 "BFF를 거쳐라"가 아니라 **"호스트를 저장하지 마라"**로 세웠다. 상대경로가 되는 순간 `next.config.ts`의 `/uploads/:path*` rewrite가 그 요청을 받아 백엔드로 넘긴다. 구조는 [`design/architecture.md`](design/architecture.md)의 런타임 구성에 있다.
 >
-> **FR-FILE-08은 방치가 아니라 판단이다.** 메뉴를 삭제해도 그 메뉴가 담긴 **과거 주문 내역은 남는다**(FR-MNU-06). 그 주문을 조회할 때 이미지가 필요하므로, 파일을 지우는 쪽이 오히려 데이터를 깨뜨린다. 메뉴 저장을 취소해서 어느 메뉴에도 붙지 않은 파일이 디스크에 남는 것은 이 규칙의 부작용이며, 정리 배치를 만들지 않고 감수한다. §10.
+> **FR-FILE-08은 방치가 아니라 판단이다.** 메뉴를 삭제해도 그 행은 판매중지 상태로 남고(FR-MNU-09), **남은 행이 그 파일을 계속 가리킨다.** 파일을 지우면 되살릴 방법이 없는 반면 남겨서 잃는 것은 디스크 몇 MB뿐이다. 메뉴 저장을 취소해서 어느 메뉴에도 붙지 않은 파일이 디스크에 남는 것은 이 규칙의 부작용이며, 정리 배치를 만들지 않고 감수한다. §10.
+>
+> **주문 조회 응답에는 이미지가 없다**(FR-ORD-08). 예전에는 이 규칙의 근거를 *"과거 주문을 조회할 때 이미지가 필요하다"*로 적어 뒀는데, 응답 어디에도 이미지가 없으므로 사실이 아니었다. 근거를 메뉴 행 쪽으로 옮겼다. 주문 조회에 이미지를 얹어서 앞뒤를 맞추는 방향은 택하지 않았다. 요구사항 하나를 지키려고 응답 스펙을 넓히는 것은 순서가 거꾸로다.
 
 ---
 
 ## 6. 인수 기준
 
-표의 진술만으로 검증 방법이 모호한 **핵심 요구사항 14개**만 Given/When/Then으로 상세화한다. 여기 없는 요구사항은 표의 진술로 충분하다.
+표의 진술만으로 검증 방법이 모호한 **핵심 요구사항**만 Given/When/Then으로 상세화한다. 여기 없는 요구사항은 표의 진술로 충분하다.
 
-### AC-01, 가격 스냅샷 회귀 (FR-ORD-05, FR-ORD-09, FR-MNU-06)
+### AC-01, 주문 스냅샷 회귀 (FR-ORD-05, FR-ORD-09, FR-ORD-14, FR-MNU-06)
 ```
-Given  15,000원짜리 메뉴를 1개 주문했다 (주문 금액 15,000원)
-When   점주가 그 메뉴 가격을 99,000원으로 수정한다
-Then   과거 주문의 조회 금액은 여전히 15,000원이다
-And    새로 담는 주문에는 99,000원이 적용된다
+Given  "아메리카노" 15,000원짜리 메뉴를 1개 주문했다. 주문 금액 15,000원
+When   점주가 그 메뉴를 "콜드브루" 99,000원으로 수정한다
+Then   과거 주문의 조회 금액은 여전히 15,000원이고
+And    과거 주문의 메뉴 이름도 여전히 "아메리카노"다
+And    새로 담는 주문에는 "콜드브루" 99,000원이 적용된다
 ```
-> 이 레포의 **회귀 방지선**이다. `getOrderList`가 `orderItem.getOrderPrice()` 대신 `getMenu().getMenuPrice()`를 읽는 순간 깨진다.
+> 이 레포의 **회귀 방지선**이다. 조회가 `orderItem`의 스냅샷 대신 `getMenu()`를 읽는 순간 깨진다. **이름 줄을 금액 줄과 나란히 둔 이유는, 금액만 검증하면 이름 쪽 회귀가 조용히 지나가기 때문이다.**
 
 ### AC-02, 총액 일치 (FR-ORD-06)
 ```
@@ -273,7 +300,10 @@ When   총 수량 0개 또는 101개로 주문한다
 Then   400 이고 주문이 생성되지 않는다
 When   총 수량 1개 또는 100개로 주문한다
 Then   주문이 생성된다
+When   [메뉴 A 를 -5개, 메뉴 B 를 10개] 로 주문한다      ← 총합은 5라서 경계를 통과한다
+Then   400 이고 주문이 생성되지 않는다
 ```
+> **마지막 줄이 이 인수 기준의 핵심이다.** 총합만 검사하면 음수 수량이 섞인 요청이 경계를 통과한다. 그러면 재고 차감(FR-STK-02)에 음수가 흘러 들어가 **주문을 넣었는데 재고가 늘어난다.** 총합 검사와 아이템별 하한은 서로를 대신하지 못한다.
 
 ### AC-06, 재고 부족 시 전체 실패 (FR-STK-03, FR-ORD-12)
 ```
@@ -336,14 +366,16 @@ Then   정상 동작한다                          ← 손님 흐름은 인증 
 ```
 > **"안 되니까 전부 permitAll"로 도망가지 않는다.** 401을 확인하는 테스트가 이 요구사항의 실제 산출물이다.
 
-### AC-13, 손님은 자기 주문만 본다 (FR-KSK-06, FR-KSK-09)
+### AC-13, 이메일로는 남의 주문을 볼 수 없다 (FR-KSK-06, FR-KSK-09, FR-KSK-11)
 ```
 Given  손님 A 의 대기번호와 손님 B 의 대기번호
 When   손님 A 가 자기 대기번호로 조회한다
-Then   자기 주문의 상태, 금액, 아이템이 보인다
+Then   자기 주문의 상태, 금액, 아이템이 보이고
+And    응답 어디에도 이메일 같은 개인 식별정보가 없다
 When   요청 본문에 남의 이메일을 넣어 주문 내역을 조회하는 경로를 찾는다
 Then   그런 경로가 존재하지 않는다
 ```
+> **제목이 "손님은 자기 주문만 본다"였는데 실제 보장보다 강해서 고쳤다.** 대기번호는 단조 증가하고 조회는 익명 공개라, 번호를 세면 남의 주문이 보인다. 이 문서가 보장하는 것은 **묶어서 새지 않는다**는 것과 **개인 식별정보가 섞이지 않는다**는 것 둘이다. 열거를 막지 않기로 한 판단과 그 이유는 §10에 있다.
 
 ### AC-14, 끝에서 끝까지 (FR-KSK-04, FR-KIT-01, FR-KIT-05)
 ```
@@ -364,7 +396,7 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 
 | ID | 요구사항 | 우선 |
 | --- | --- | --- |
-| NFR-CON-01 | 재고 N인 메뉴에 동시 주문 M건(M > N)이 들어오면 **정확히 N건 성공, M-N건 409, 최종 재고 0**이다 | 필수 |
+| NFR-CON-01 | 재고 N인 메뉴에 **1개씩** 주문하는 동시 요청 M건이 들어오면(M > N) **정확히 N건 성공, M-N건 409, 최종 재고 0**이다. 수량이 섞인 일반형에서는 **성공한 수량의 합이 N을 넘지 않고 재고가 음수가 되지 않는다** | 필수 |
 | NFR-CON-02 | 락이 없던 버전에서 위 테스트가 **실패한다는 사실이 커밋 히스토리에 남는다** | 필수 |
 | NFR-CON-03 | **비관적 락, 낙관적 락, Redisson 분산 락 세 전략 각각**에서 NFR-CON-01을 만족한다 | 필수 |
 | NFR-CON-04 | 다중 메뉴 주문이 서로 반대 순서로 들어와도 **데드락이 발생하지 않는다** (`menuId` 오름차순 락) | 필수 |
@@ -441,10 +473,12 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 | | `status` | 정해진 전이만 허용. 값은 다섯 개 | `Order`의 전이 메서드 **만** |
 | | `orderTime` | 생성 시 고정 | 생성자 |
 | **OrderItem** | `orderPrice` | 주문 시점 메뉴 가격, 이후 불변 | `OrderItem` 생성자가 메뉴에서 복사 |
-| | `count` | 생성 시 고정 | 생성자 |
+| | `menuName` | 주문 시점 메뉴 이름, 이후 불변 | `OrderItem` 생성자가 메뉴에서 복사 |
+| | `count` | **1 이상**, 생성 시 고정 | 생성자 |
 | **Customer** | `email` | 유일 | 생성자. **회원이 아니라 익명 주문 주체**다 |
 | **Menu** | `menuName`,`menuPrice`,`imgUrl`,`category` | 가격 0~10,000,000, `imgUrl`은 호스트 없는 상대경로 | `Menu.modify()` |
 | | `email` | 없음 | **등록자 기록일 뿐. 권한 판단에 쓰지 않는다** |
+| | 판매중지 여부 | 한 번 서면 되돌리지 않는다. 행은 지우지 않는다 | `Menu`의 판매중지 메서드 **만**. 서비스가 필드를 직접 대입하지 않는다 |
 | **Stock** | `quantity` | **음수가 될 수 없다** | `Stock.decrease()` / `Stock.increase()` **만** |
 | | `version` | 낙관적 락용 | JPA (`@Version`) |
 | **Owner** | `email` | 유일 | 생성자 |
@@ -463,13 +497,13 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 | `POST /api/auth/login` | 익명 | 점주 로그인. Access 토큰 발급 |
 | `POST /api/order` | 익명 | 주문 생성. 대기번호와 결제 금액 반환 |
 | `GET /api/orders/{orderNumber}` | 익명 | **대기번호 단건 조회.** 손님이 자기 주문만 본다 |
-| `GET /api/menus` | 익명 | 메뉴 목록. 재고 수량과 품절 여부 포함 |
+| `GET /api/menus` | 익명 | **판매중인** 메뉴 목록. 재고 수량과 품절 여부 포함 |
 | `GET /api/orders?status=` | **OWNER** | 주문 목록. `orderTime` 오름차순 FIFO, 상태 필터 |
 | `PATCH /api/order/{orderId}/status` | **OWNER** | 상태 전이. 잘못된 전이는 409 |
 | `POST /api/menus` | **OWNER** | 메뉴 등록 |
 | `PUT /api/menus/{id}` | **OWNER** | 메뉴 수정 |
-| `DELETE /api/menus/{id}` | **OWNER** | 메뉴 삭제 |
-| `PATCH /api/stocks/{menuId}` | **OWNER** | 재고 조정 |
+| `DELETE /api/menus/{id}` | **OWNER** | 메뉴 판매중지. 행은 남는다 |
+| `PATCH /api/stocks/{menuId}` | **OWNER** | 재고 조정. 바꿀 양을 부호 있는 값으로 받는다 |
 | `POST /api/upload/image` | **OWNER** | 이미지 업로드. 호스트 없는 상대경로 반환 |
 
 **로그아웃은 백엔드 엔드포인트가 아니다.** BFF의 `app/api/auth/logout/route.ts`가 쿠키를 지우는 것으로 끝난다. FR-AUTH-12.
@@ -499,12 +533,14 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 
 | 규칙 | 정본 (백엔드) | 조기 차단 (BFF/클라이언트) |
 | --- | --- | --- |
-| 주문 총 수량 1~100 | `OrderController.createOrder` | `app/api/order/route.ts` |
-| 메뉴 가격 0~10,000,000 | `MenuController.createMenu` | `app/api/menu/route.ts` |
+| 아이템 수량 1 이상, 총 수량 1~100 | `OrderDto`의 검증 애노테이션 + `@Valid` | `app/api/order/route.ts` |
+| 메뉴 가격 0~10,000,000 | `menu/dto`의 검증 애노테이션 + `@Valid` | `app/api/menu/route.ts` |
 | 업로드 이미지만, 5MB 이하 | `FileUploadController.uploadImage` | `app/api/upload/route.ts` + 파일 선택 시 |
 | 이메일 형식 | `@Email` (DTO) | 키오스크 화면의 정규식 |
 
 > **BFF 검증을 지우면 UX가 나빠질 뿐 보안이 뚫리지는 않는다. 백엔드 검증을 지우면 뚫린다.** 이 방향을 헷갈리지 않는다.
+>
+> **정본 열이 컨트롤러가 아니라 DTO를 가리키는 것에 의미가 있다.** 지금 코드는 수량과 가격 경계를 컨트롤러 안의 `if`문으로 막고 거절 응답을 손으로 만들어 돌려준다. 그러면 §9-5가 예외에서 HTTP로의 변환을 `GlobalExceptionHandler`에 몰아둔 것이 무너지고, 같은 규칙이 등록과 수정에서 서로 다르게 적힌다. **검증은 DTO에 선언하고 위반은 예외로 흘려보낸다.** 이 문서는 완성된 시스템을 진술하므로, 현재의 임시 구현을 근거 열에 박아두지 않는다.
 
 ### 9-4. BFF 규약
 
@@ -537,6 +573,9 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 | 배송, 주소, 우편번호 | 이 레포는 배송 쇼핑몰이 아니다 | **영구** |
 | 다국어(i18n) | 학습 주제와 무관 | **영구** |
 | **손님이 스스로 주문을 취소하는 경로** | 대기번호만으로 취소하게 하면 **남의 대기번호로 남의 주문을 취소할 수 있다.** 대기번호는 PK 파생이라 단조 증가해 추측이 쉽고, 익명 손님 모델과 정면으로 부딪힌다. 손님은 카운터에서 말로 취소하고 바리스타가 누른다 | **영구** |
+| **대기번호 열거를 막는 것** | 대기번호는 PK 파생이라 추측이 쉽고 단건 조회는 익명이다. 그러나 카운터에서 소리내어 부르는 번호는 이미 공개 정보이고, 응답에 개인 식별정보가 없어(FR-KSK-11) 열거로 얻는 것은 남의 주문 상태와 금액뿐이다. **손님의 자가 취소를 금지한 것과 같은 사실에서 결론이 갈리는 이유는 그쪽이 쓰기이기 때문이다.** 남의 주문을 무르는 것과 들여다보는 것은 무게가 다르다 | **영구** |
+| **손님 이메일의 보존, 파기 정책** | 개인정보 취급 절차를 세우는 것은 학습 주제와 무관하다. 로그에 남기지 않는 선(NFR-SEC-02)까지만 지킨다 | **영구** |
+| **판매중지된 메뉴를 되살리는 기능** | 행이 남는 것은 과거 주문의 참조를 지키기 위한 것이지 복구를 위한 것이 아니다. 다시 팔려면 새로 등록한다. FR-MNU-09 | **영구** |
 | **픽업하지 않은 주문의 폐기 상태** | 상태를 하나 더 만들면 전이 규칙, 테스트, 화면이 전부 늘어나는데 얻는 것은 통계뿐이다. 바리스타가 픽업완료로 눌러 정리한다. §2의 `COMPLETED` 정의 | **영구** |
 | **고아 이미지 정리 배치** | 파일을 지우면 과거 주문 조회가 깨진다. 붙지 않은 파일이 남는 것은 그 규칙의 부작용으로 감수한다. FR-FILE-08 | **영구** |
 | **오브젝트 스토리지** | 자격증명, 버킷 정책, SDK 의존성이 들어오는데 배우는 것이 주제와 무관하다. 로컬 디스크를 쓰고 유실을 감수한다. NFR-OPS-05 | **영구** |
@@ -559,28 +598,34 @@ Then   손님의 주문 조회 화면 상태가 바뀐다
 
 | 요구사항 | 검증 수단 |
 | --- | --- |
-| FR-KSK-01, FR-KSK-02, FR-KSK-03, FR-KSK-07 / **AC-05** | `order/controller/OrderControllerTest` |
+| FR-KSK-01, FR-KSK-02, FR-KSK-03, FR-KSK-07 / **AC-05** | `order/controller/OrderControllerTest`. 총합 경계 + **음수 수량이 섞인 요청** |
 | FR-KSK-04, FR-KSK-05, FR-KSK-10 | 수동 + PR 스크린샷 |
-| FR-KSK-06, FR-KSK-09 / **AC-13** | `OrderControllerTest`. 대기번호 단건 조회 + 이메일 조회 경로 부재 |
+| FR-KSK-06 / **AC-13** | `OrderControllerTest`. 대기번호 단건 조회 |
 | FR-KSK-08 | 통합 테스트 + 수동 |
-| FR-ORD-01 ~ 04, FR-ORD-13 / **AC-03** | `order/entity/OrderTest` (POJO) |
-| FR-ORD-05, FR-ORD-06, FR-ORD-09 / **AC-01**, **AC-02** | `OrderTest`, `OrderControllerTest`. 가격 스냅샷 회귀 |
+| FR-KSK-09 | `grep` + 폐기 확인. 이메일을 받아 주문 목록을 돌려주는 엔드포인트가 없다. **경로의 부재는 테스트로 증명할 수 없다** |
+| FR-KSK-11 | `OrderControllerTest`. 단건 조회 응답 필드에 이메일이 없다 |
+| FR-ORD-01 ~ 04 / **AC-03** | `order/entity/OrderTest` (POJO) |
+| FR-ORD-13 | `OrderStatus.values().length` 검증 + 코드 리뷰. **전이 테스트는 enum 상수 개수를 잡지 못한다** |
+| FR-ORD-05, FR-ORD-06, FR-ORD-09, FR-ORD-14 / **AC-01**, **AC-02** | `OrderTest`, `OrderControllerTest`. 가격과 이름 스냅샷 회귀 |
+| FR-ORD-15, FR-MNU-07 | `MenuControllerTest`, `OrderControllerTest`. 모든 응답이 `RsData` 필드를 갖는다 |
 | FR-ORD-07, NFR-DATA-03 / **AC-04** | `OrderControllerTest` |
 | FR-ORD-08 | `OrderControllerTest` |
 | FR-ORD-10 | `OrderControllerTest` |
 | FR-ORD-11, FR-STK-05 / **AC-07**, **AC-08** | 통합 테스트. 취소 복구와 이중 복구 금지 |
 | FR-ORD-12, NFR-DATA-02 / **AC-06** | 통합 테스트. 아이템 일부 실패 시 전체 롤백 |
-| FR-MNU-01, FR-MNU-02, FR-MNU-05, FR-MNU-07 | `menu/controller/MenuControllerTest`. 401 + 404 + `RsData` 포맷 |
-| FR-MNU-03, FR-MNU-04 | `MenuControllerTest` |
+| FR-MNU-01, FR-MNU-02, FR-MNU-05 | `menu/controller/MenuControllerTest`. 401 + 404 + 판매중지 메뉴가 목록에 없다 |
+| FR-MNU-03, FR-MNU-04 | `MenuControllerTest`. 등록과 수정 양쪽에서 같은 경계 |
 | FR-MNU-06 | `OrderControllerTest` (AC-01과 동일) |
 | FR-MNU-08 | 코드 리뷰. `Menu.email`이 인가 분기에 쓰이지 않는지 `grep` |
+| FR-MNU-09 | 통합 테스트. **삭제한 메뉴가 담긴 과거 주문을 조회해도 깨지지 않는다.** 재고 행도 남는다 |
 | FR-STK-01 | `stock/repository/StockRepositoryIntegrationTest` |
 | FR-STK-02, FR-STK-03 / **AC-06** | 통합 테스트. 부분 차감 없음 |
 | FR-STK-04, NFR-DATA-01, NFR-TEST-06 | `stock/entity/StockTest` (POJO) |
 | FR-STK-06, NFR-DATA-04 | `StockTest` + 동시성 테스트 |
-| FR-STK-07, FR-STK-08, FR-ADM-02 | 통합 테스트 + 수동 |
+| FR-STK-07, FR-STK-08, FR-ADM-02 | 통합 테스트 + 수동. 증감 조정이 음수 결과를 409로 막는다 |
+| FR-STK-09 | **없음. 의도적 비요구사항이라 검증할 산출물이 없다.** §10 |
 | FR-AUTH-01 ~ 03 | 로그인 통합 테스트. 성공/실패, 해시 저장 확인 |
-| FR-AUTH-04, FR-AUTH-06 / **AC-12** | 통합 테스트. 토큰 없이 점주 API 호출 시 401 |
+| FR-AUTH-04, FR-AUTH-06 / **AC-12** | 통합 테스트. 토큰 없이 점주 API 호출 시 401. **403이면 실패다** |
 | FR-AUTH-05, NFR-SEC-06 | `grep` + 코드 리뷰. 요청 본문 이메일로 권한을 확인하는 코드가 없다 |
 | FR-AUTH-07, FR-AUTH-08, FR-AUTH-10 | 코드 리뷰. `JwtTokenProvider` 클레임 |
 | FR-AUTH-09, FR-AUTH-11, FR-AUTH-12 | 코드 리뷰 + 수동. 브라우저 개발자도구에서 토큰이 보이지 않는다 |

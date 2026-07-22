@@ -190,8 +190,23 @@ private Claims parse(String token) {
 | `AuthService` | 로그인 성공 시 `createAccessToken` 호출 → 토큰 발급 |
 | `JwtAuthenticationFilter` | 매 요청마다 `validate` + `getPrincipal` 호출 → SecurityContext 세팅 |
 | `OwnerPrincipal` | `getPrincipal`이 반환하는 record (`id`, `email`) |
-| `SecurityConfig` | 필터 등록 + URL별 인가 규칙(점주 API는 ROLE_OWNER 요구) |
+| `SecurityConfig` | 필터 등록 + URL별 인가 규칙(점주 API는 ROLE_OWNER 요구) + **인증 실패 진입점 등록** |
+| `AuthenticationEntryPoint` | 토큰이 없거나 검증에 실패한 요청에 **401**을 내려준다. 아래 참고 |
 | `application.yml` | `jwt.secret`, `jwt.access-expiration` 설정 주입 |
+
+---
+
+### 진입점을 등록하지 않으면 401이 아니라 403이 나간다 (중요한 함정)
+
+`validate`가 `false`를 반환하면 이 클래스의 일은 끝나고, `SecurityContext`가 빈 채로 인가 단계까지 흘러간다. 그다음이 문제다.
+
+- Spring Security는 **인증 수단이 등록한 진입점**을 통해 "당신은 인증이 필요합니다"를 알린다. 폼 로그인이나 HTTP Basic을 쓰면 그쪽이 진입점을 자동으로 붙여준다
+- 이 설계는 **둘 다 쓰지 않는다.** 커스텀 필터 하나만 얹으므로 등록된 진입점이 없고, 그러면 인증 없는 요청이 **403으로 돌아간다**
+- `FR-AUTH-04`와 `AC-12`는 401을 요구한다. 그러므로 `SecurityConfig`의 `exceptionHandling`에 진입점을 **직접 붙여야 한다**
+
+401과 403을 구분하는 것은 형식이 아니다. **401은 "로그인하라"이고 403은 "당신은 자격이 없다"**여서, BFF가 로그인 화면으로 보낼지 오류를 보여줄지를 이 코드로 판단한다. 둘을 섞으면 만료된 토큰으로 접근한 점주가 로그인 화면 대신 권한 없음 메시지를 보게 된다.
+
+응답 본문은 다른 API와 같이 `RsData` 형태로 쓴다. 진입점은 예외 핸들러 밖에서 도는 자리라 `GlobalExceptionHandler`가 잡아주지 않는다.
 
 ---
 

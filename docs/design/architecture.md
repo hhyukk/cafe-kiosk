@@ -478,8 +478,9 @@ erDiagram
         long id PK
         long order_id FK
         long menu_id FK
-        int count
+        int count "1 이상"
         int orderPrice "★ 주문 시점 가격 스냅샷"
+        string menuName "★ 주문 시점 이름 스냅샷"
     }
     MENU {
         long id PK
@@ -488,6 +489,7 @@ erDiagram
         string category
         string imgUrl "호스트 없는 상대경로 /uploads/..."
         string email "등록자 기록, 인가에 쓰지 않는다"
+        boolean salesStopped "판매중지. 행은 지우지 않는다"
     }
     STOCK {
         long id PK
@@ -501,6 +503,8 @@ erDiagram
         string passwordHash "평문 저장 금지"
     }
 ```
+
+**메뉴는 행을 지우지 않는다.** `ORDER_ITEM`이 `menu_id`로 메뉴를 참조하고 `STOCK`이 1:1로 매달려 있어서, 행을 지우면 과거 주문과 재고가 함께 무너진다. 그래서 삭제는 `salesStopped`를 세우는 것이고 손님 목록에서만 사라진다. FR-MNU-09. 그럼에도 `ORDER_ITEM`이 가격과 이름을 스냅샷해 두는 이유는, **참조가 살아 있는 것과 표시가 안 변하는 것이 다른 문제**이기 때문이다. 메뉴 이름을 고치면 참조는 멀쩡하지만 과거 주문의 표시가 따라 바뀐다.
 
 **`OWNER`는 다른 테이블과 관계를 갖지 않는다.** `Menu.email`이 등록자 기록이지만 FK가 아니다. 1인 매장에서 메뉴별 소유자 분리는 실익이 없고 연쇄 수정 비용만 크다.
 

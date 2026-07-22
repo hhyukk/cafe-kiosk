@@ -1,6 +1,7 @@
 # Phase 2: 재고를 주문에 연결  ⬜ 예정
 
 > [← 로드맵 인덱스](../ROADMAP.md), [배경과 "왜"](../PRODUCT.md)
+> 기준: 현재 `main` 코드 / 갱신: 2026-07-22
 
 ---
 
@@ -19,20 +20,24 @@
 - `StockRepository.findByMenuId(Long)`는 이미 있다. 통합 테스트도 2개 있다.
 - 메뉴 조회 응답(`MenuDto.MenuListResponse`)에 **재고 정보가 전혀 없다.** 프론트가 품절을 표시할 방법이 없다.
 - `BaseInitData`의 시드 재고는 **100 / 50 / 3**이다. 마지막 "브라질 산토스"만 3개인 건 우연이 아니라 **Phase 3의 경쟁 상황을 재현하기 좋은 값**이다.
-- **컨트롤러 메서드에 `@Transactional`이 붙어 있다.** `OrderController.createOrder`/`getOrders`/`changeStatus`, `MenuController.createMenu`/`deleteMenu`. 이 Phase의 첫 PR에서 걷어낸다.
+- **컨트롤러 메서드에 `@Transactional`이 일곱 곳 붙어 있다.** `OrderController`의 `createOrder:44`, `orderList:64`, `getOrders:88`, `changeStatus:112`와 `MenuController`의 `getMenus:36`, `createMenu:85`, `deleteMenu:101`. 이 Phase의 첫 PR에서 전부 걷어낸다. **조회 메서드인 `orderList`와 `getMenus`를 빠뜨리기 쉽다.** 완료 기준이 "하나도 없다"이므로 일곱 곳을 다 세야 한다.
 
 ---
 
 ## 작업 단위
 
-| # | PR | 건드리는 파일 | 선행 |
-| --- | --- | --- | --- |
-| 1 | `refactor: 컨트롤러의 @Transactional 제거하고 트랜잭션 경계를 서비스로 내린다` | `OrderController`, `MenuController` | 없음 |
-| 2 | `feat: Stock에 재고 증감 메서드 추가` | `stock/entity/Stock`, 신설 `stock/exception/OutOfStockException`, 신설 `stock/entity/StockTest` | 없음 |
-| 3 | `feat: 주문 생성 시 재고를 차감한다` | `order/service/OrderService`, 신설 `stock/service/StockService`, `GlobalExceptionHandler`, `Backend/App/CLAUDE.md` | 1, 2 |
-| 4 | `feat: 주문 취소 시 재고를 복구한다` | `OrderService.changeStatus` | 3 |
-| 5 | `feat: 메뉴 조회 응답에 재고와 품절 여부 노출` | `menu/dto/MenuDto`, `MenuController`, 프론트 `page.tsx` 품절 표시 | 3 |
-| 6 | `feat: 점주 재고 조정 API 추가` | 신설 `stock/controller/StockController`, 프론트 `/admin` | 3, 5 |
+**`요구사항` 열이 이 Phase가 소화하는 것의 정본이다.** ID의 진술 자체는 [`REQUIREMENTS.md §5`](../REQUIREMENTS.md), 검증 수단은 그 문서 §11에 있다.
+
+| # | PR | 요구사항 | 건드리는 파일 | 선행 |
+| --- | --- | --- | --- | --- |
+| 1 | `refactor: 컨트롤러의 @Transactional 제거하고 트랜잭션 경계를 서비스로 내린다` | NFR-CON-05 | `OrderController`, `MenuController` | 없음 |
+| 2 | `feat: Stock에 재고 증감 메서드 추가` | FR-STK-04, FR-STK-06<br>NFR-DATA-01, NFR-DATA-04, NFR-TEST-06 | `stock/entity/Stock`, 신설 `stock/exception/OutOfStockException`, 신설 `stock/entity/StockTest` | 없음 |
+| 3 | `feat: 주문 생성 시 재고를 차감한다` | FR-STK-02, FR-STK-03, FR-ORD-12<br>NFR-DATA-02, **AC-06** | `order/service/OrderService`, 신설 `stock/service/StockService`, `GlobalExceptionHandler`, `Backend/App/CLAUDE.md` | 1, 2 |
+| 4 | `feat: 주문 취소 시 재고를 복구한다` | FR-STK-05, FR-ORD-11<br>**AC-07**, **AC-08** | `OrderService.changeStatus` | 3 |
+| 5 | `feat: 메뉴 조회 응답에 재고와 품절 여부 노출` | FR-STK-07, FR-KSK-08 | `menu/dto/MenuDto`, `MenuController`, 프론트 `page.tsx` 품절 표시 | 3 |
+| 6 | `feat: 점주 재고 조정 API 추가` | FR-STK-08, FR-ADM-02 | 신설 `stock/controller/StockController`, 프론트 `/admin` | 3, 5 |
+
+**FR-STK-01은 이미 충족돼 있다.** `Menu ↔ Stock` 1:1 관계와 `StockRepositoryIntegrationTest` 2개가 그것이다. **FR-STK-09는 의도적 비요구사항**이라 소화할 PR이 없다. 재고 이력을 만들지 않는다는 진술이지 작업이 아니다.
 
 ### PR별 메모
 
@@ -42,7 +47,9 @@
 
 Phase 3의 낙관적 락 재시도는 **트랜잭션이 롤백된 뒤 새 트랜잭션에서** 다시 시도해야 성립하는데, 컨트롤러가 트랜잭션을 쥐고 있으면 그게 구조적으로 불가능하다. **재고를 붙이기 전에 걷어낸다.** 나중에 하면 재고 로직까지 함께 흔들어야 한다.
 
-이 PR은 순수 리팩터링이라 기존 테스트가 그대로 통과해야 한다. 통과하지 않으면 **암묵적으로 컨트롤러 트랜잭션에 기대고 있던 코드가 있다는 뜻**이므로, 그걸 찾는 게 이 PR의 수확이다(대표적으로 뷰 렌더링 시점의 lazy 로딩).
+이 PR은 순수 리팩터링이라 기존 테스트가 그대로 통과해야 한다. 통과하지 않으면 **암묵적으로 컨트롤러 트랜잭션에 기대고 있던 코드가 있다는 뜻**이므로, 그걸 찾는 게 이 PR의 수확이다. 대표적으로 뷰 렌더링 시점의 lazy 로딩이 그렇다.
+
+**조회 메서드를 빠뜨리지 않는다.** `OrderController.orderList`와 `MenuController.getMenus`에도 붙어 있다. 쓰기 메서드만 훑으면 두 곳이 남고, 그러면 완료 기준을 만족하지 못한다.
 
 **#2 재고 차감은 엔티티가 소유한다**
 
@@ -78,6 +85,10 @@ public void increase(int count) { ... }
 
 점주가 재고를 채워 넣는 API. `ROLE_OWNER` 전용이다(Phase 1에서 만든 인가를 그대로 쓴다). 응답은 `RsData<T>`.
 
+**최종 수량이 아니라 바꿀 양을 받는다.** FR-STK-08. 최종 수량을 받으면 `Stock`에 수량을 대입하는 세 번째 경로가 생기고 그 경로만 음수 검사를 따로 해야 하는데, 그건 FR-STK-04와 정면으로 부딪힌다. 델타로 받으면 `#2`에서 만든 `increase`, `decrease`를 그대로 쓰고 음수 금지가 한 곳에서만 지켜진다. 결과가 음수가 되는 조정은 `OutOfStockException`을 타고 **409**로 나간다.
+
+점주 화면이 실사 수량을 다루고 싶다면 **화면이 차이를 계산해서 보낸다.** 불변식을 지키는 쪽은 서버다.
+
 ---
 
 ## 함정
@@ -95,7 +106,7 @@ public void increase(int count) { ... }
 - [ ] 3개 주문에 성공하면 재고 0, 키오스크 화면에 **품절 표시**
 - [ ] 그 주문을 취소하면 재고가 3으로 복구된다
 - [ ] `COMPLETED` 주문을 취소 시도하면 409이고, 재고는 **복구되지 않는다**
-- [ ] 컨트롤러에 `@Transactional`이 하나도 없다
+- [ ] 컨트롤러에 `@Transactional`이 하나도 없다. 시작 시점 기준 일곱 곳이다
 - [ ] `Backend/App/CLAUDE.md`의 "죽은 도메인" 절이 갱신됐다
 - [ ] `./gradlew test` 통과
 
