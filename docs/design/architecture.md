@@ -1,9 +1,9 @@
 # cafe-kiosk 시스템 구성도
 
 > 이 문서는 **"어떻게 조립돼 있는가"**를 담는다 — 프로세스가 몇 개고 어느 포트에 뜨며, 요청이 어떤 화살표를 타고 어느 클래스를 지나는가.
-> **"왜"**는 [`PRODUCT.md`](../PRODUCT.md), **"무엇을 만족해야 하나"**는 [`REQUIREMENTS.md`](../REQUIREMENTS.md), **"언제·지금 어디"**는 [`ROADMAP.md`](../ROADMAP.md)에 있다.
+> **"왜"**는 [`PRODUCT.md`](../PRODUCT.md), **"무엇을 만족해야 하나"**는 [`REQUIREMENTS.md`](../REQUIREMENTS.md), **"누가 어떤 순서로"**는 [`USECASES.md`](../USECASES.md), **"언제·지금 어디"**는 [`ROADMAP.md`](../ROADMAP.md)에 있다.
 >
-> 기준: 현재 `main` 코드 (Phase 1 진행 중) / 최초 작성: 2026-07-21
+> 기준: **프로젝트 완성 시점** / 최초 작성: 2026-07-21 · 완성 기준 전환: 2026-07-22
 
 ---
 
@@ -13,15 +13,17 @@
 
 | 알고 싶은 것 | 정본 |
 | --- | --- |
-| API 엔드포인트 목록 · 목표 경로 | [`REQUIREMENTS.md §9-1`](../REQUIREMENTS.md#9-1-api--현재--목표) |
+| API 엔드포인트 목록 | [`REQUIREMENTS.md §9-1`](../REQUIREMENTS.md#9-1-api) |
 | 어느 엔드포인트에 인증이 필요한가 | [`REQUIREMENTS.md §9-2`](../REQUIREMENTS.md#9-2-권한-매트릭스) |
-| 각 기능이 구현됐는가 | [`REQUIREMENTS.md §5`](../REQUIREMENTS.md#5-기능-요구사항) |
+| 각 기능이 무엇을 만족해야 하는가 | [`REQUIREMENTS.md §5`](../REQUIREMENTS.md#5-기능-요구사항) |
 | 액터가 어떤 순서로 쓰는가 · 예외 흐름의 분기 | [`USECASES.md`](../USECASES.md) |
 | 엔티티 필드의 불변식과 소유자 | [`REQUIREMENTS.md §8`](../REQUIREMENTS.md#8-데이터-요구사항) |
-| 언제 무엇을 하는가 | [`ROADMAP.md`](../ROADMAP.md) + [`roadmap/phase-*.md`](../roadmap/) |
+| 지금 어디까지 됐는가 | [`ROADMAP.md`](../ROADMAP.md) + [`roadmap/phase-*.md`](../roadmap/) |
 | JWT 발급·검증 클래스 상세 | [`jwt-auth.md`](jwt-auth.md) |
 
 **같은 내용을 두 곳에 적지 않는다** — 중복되면 둘 다 썩는다. 코드 참조는 **파일 경로 + 메서드명까지만** 적고 줄 번호는 적지 않는다.
+
+**이 문서는 완성된 구성을 그린다.** 진행 상태는 담지 않는다.
 
 ---
 
@@ -38,8 +40,8 @@ flowchart LR
     SYS["<b>cafe-kiosk</b><br/>주문 · 메뉴 · 재고<br/>단일 매장 · 키오스크 1대"]
 
     GUEST -->|"메뉴 조회 · 주문 · 대기번호로 상태 조회"| SYS
-    BARISTA -->|"주문 접수 · 제조중 → 준비완료 → 픽업완료"| SYS
-    OWNER -->|"메뉴 CRUD · 재고 조정 · 이미지 업로드"| SYS
+    BARISTA -->|"주문 접수 · 제조중 → 준비완료 → 픽업완료 · 취소"| SYS
+    OWNER -->|"메뉴 CRUD · 재고 조정 · 이미지 업로드 · 지난 주문 조회"| SYS
 
     EXT["외부 시스템 없음<br/>결제는 모킹 · 주문 생성 = CONFIRMED"]
     SYS -.->|"연동 없음"| EXT
@@ -51,68 +53,72 @@ flowchart LR
 
 ---
 
-## 3. 런타임 구성 — 현재
+## 3. 런타임 구성
 
-프로세스는 넷이다. 브라우저 · Next.js dev server(3000) · Spring Boot(8080) · PostgreSQL(5432). **Redis(6379)는 컨테이너만 떠 있고 코드가 연결하지 않는다** — `build.gradle.kts`에 Redis/Redisson 의존성 자체가 없다. Phase 3에서 처음 쓰인다.
+프로세스는 넷이다 — 브라우저 · Next.js · Spring Boot · PostgreSQL. 여기에 **분산 락 전용 Redis**가 붙는다. 캐시가 아니다.
 
 ```mermaid
 flowchart TD
     subgraph BROWSER["브라우저"]
-        PAGE["<b>page.tsx</b><br/>단일 client 컴포넌트 1230줄<br/>손님 · 관리자 UI 혼재"]
+        K["<b>/</b> 키오스크<br/>손님 · 익명"]
+        ORD["<b>/order/{orderNumber}</b><br/>주문 완료 · 조회"]
+        KIT["<b>/kitchen</b> 주방<br/>바리스타"]
+        ADM["<b>/admin</b> 관리자<br/>점주"]
+        LOG["<b>/login</b><br/>경유지"]
     end
 
-    subgraph NEXT["Next.js dev server :3000"]
-        BFF["<b>BFF Route Handler</b> 4개<br/>api/menu · api/menu/{menuId}<br/>api/order · api/order/history"]
-        RW["next.config.ts rewrite<br/>/uploads/:path* → :8080"]
+    subgraph NEXT["Next.js :3000"]
+        BFF["<b>BFF Route Handler</b><br/>브라우저 → 백엔드의 유일한 통로<br/>입력 조기 차단 · 필드명 변환 · 오류 정규화"]
+        CK["<b>httpOnly 쿠키</b><br/>Access 토큰 보관<br/>브라우저 JS 접근 불가"]
+        RW["next.config.ts rewrite<br/>/uploads/:path* → 백엔드"]
     end
 
     subgraph BOOT["Spring Boot :8080"]
-        API["<b>@RestController</b><br/>OrderController · MenuController<br/>FileUploadController"]
+        SFC["<b>SecurityFilterChain</b><br/>JwtAuthenticationFilter<br/>CorsConfigurationSource"]
+        API["<b>@RestController</b><br/>Auth · Order · Menu · Stock · File"]
+        SVC["<b>Service</b><br/>트랜잭션 경계 · 재고 차감 · 락"]
         STATIC["<b>WebConfig</b> 정적 핸들러<br/>/uploads/**"]
     end
 
-    subgraph COMPOSE["Docker Compose"]
-        PG[("<b>PostgreSQL 16</b> :5432<br/>ddl-auto: create<br/>기동마다 드롭·재생성")]
-        RD[("<b>Redis 7</b> :6379<br/>컨테이너만 존재<br/>연결하는 코드 없음")]
+    subgraph INFRA["인프라"]
+        PG[("<b>PostgreSQL 16</b><br/>Flyway 마이그레이션")]
+        RD[("<b>Redis 7</b><br/>Redisson 분산 락")]
     end
 
     FS["<b>./uploads/</b><br/>런타임 업로드 · gitignore"]
     CP["<b>classpath:/static/uploads/</b><br/>커밋된 시드 이미지"]
 
-    PAGE ==>|"fetch('/api/*')"| BFF
-    BFF ==>|"fetch('http://localhost:8080/...')"| API
-    PAGE -->|"img src='/uploads/...'"| RW
-    RW -->|"프록시"| STATIC
-    PAGE -.->|"⚠ 직통 · 이미지 업로드 2곳<br/>POST /api/upload/image"| API
+    K ==> BFF
+    ORD ==> BFF
+    KIT ==> BFF
+    ADM ==> BFF
+    LOG ==> BFF
 
-    API --> PG
+    BFF <-.->|"토큰 읽기 · 쓰기"| CK
+    BFF ==>|"Authorization: Bearer<br/>API_BASE_URL"| SFC
+    SFC --> API --> SVC
+
+    K -->|"img src='/uploads/...'"| RW
+    RW -->|"프록시"| STATIC
+
+    SVC --> PG
+    SVC ==>|"락 전략 셋 중 하나"| RD
     STATIC --> FS
     STATIC --> CP
-
-    style RD stroke-dasharray: 5 5
 ```
 
-### 3-1. 브라우저 → 백엔드 경로가 **셋**이다
+### 3-1. 브라우저 → 백엔드 경로가 **둘**이다
 
-구성도에서 가장 중요한 부분. 하나의 화살표가 아니라 성격이 다른 셋이고, **아직 하나가 BFF 규약(C-04)을 어기고 있다.**
+구성도에서 가장 중요한 부분. 성격이 다른 둘뿐이고, **직통 경로는 없다.**
 
-| # | 무엇 | 통과 지점 | C-04 |
-| --- | --- | --- | --- |
-| ① | 메뉴 · 주문 | `page.tsx` → BFF Route Handler → :8080 | ✅ 준수 |
-| ② | 이미지 **업로드** | 없음. `page.tsx`가 브라우저에서 :8080 직접 호출 | ❌ 위반 (FR-FILE-05, Phase 4) |
-| ③ | 이미지 **표시** | `<img src="/uploads/...">` → `next.config.ts` rewrite → :8080 | ✅ 준수 (FR-FILE-07) |
+| # | 무엇 | 통과 지점 |
+| --- | --- | --- |
+| ① | 메뉴 · 주문 · 인증 · 재고 · **이미지 업로드** | 화면 → BFF Route Handler → 백엔드 |
+| ② | 이미지 **표시** | `<img src="/uploads/...">` → `next.config.ts` rewrite → 백엔드 정적 핸들러 |
 
-**③은 이 문서를 쓰면서 드러난 결함이었고, 그 자리에서 고쳤다.** 고치기 전에는 이랬다:
+②가 성립하는 조건은 **저장된 URL이 호스트를 포함하지 않는 것**이다(FR-FILE-07). 절대 URL이 저장되면 rewrite는 한 번도 타지 않는 죽은 설정이 되고, 이미지가 뜨는 것은 rewrite 덕분이 아니라 **브라우저가 백엔드를 직접 때리기 때문**이 된다. `<img>` 태그에는 CORS가 적용되지 않아 그 상태가 조용히 성공한다는 점이 이 함정을 오래 살려두는 이유다.
 
-- `BaseInitData`의 시드 메뉴가 `imgUrl`을 **절대 URL**(`http://localhost:8080/uploads/...`)로 심었다
-- `FileUploadController.uploadImage`도 응답 `imageUrl`에 `server.base-url`을 **앞에 붙여서** 절대 URL로 돌려줬다
-- `page.tsx`는 그 값을 `<img src={product.img_url}>`에 그대로 꽂았다
-
-→ 상대경로 `/uploads/...`가 만들어지는 경로가 없으니 **rewrite는 한 번도 타지 않는 죽은 설정**이었고, 이미지가 화면에 뜨는 것은 rewrite 덕분이 아니라 **브라우저가 :8080을 직접 때리기 때문**이었다. `<img>` 태그에는 CORS가 적용되지 않아 조용히 성공하고 있었다.
-
-**진짜 문제는 그 절대 URL이 `Menu.imgUrl` 컬럼에 저장된다는 것이었다.** 코드의 하드코딩은 `grep`으로 걷어낼 수 있지만 이미 저장된 행은 그렇지 않다. 그래서 요구사항을 "BFF를 거쳐라"가 아니라 **"호스트를 저장하지 마라"**(FR-FILE-07)로 잡았다. 백엔드가 상대경로를 내려주도록 바꾸니 rewrite가 살아나면서 ③의 직통 호출도 함께 사라졌다. 근거는 [`REQUIREMENTS.md §5-8`](../REQUIREMENTS.md#5-8-fr-file--이미지-업로드).
-
-남은 것은 ②뿐이다. 업로드 요청 자체를 BFF로 옮기는 일이라 Phase 4다.
+**진짜 위험은 그 절대 URL이 `Menu.imgUrl` 컬럼에 저장된다는 것이다.** 코드의 하드코딩은 `grep`으로 걷어낼 수 있지만 이미 저장된 행은 그렇지 않다. 그래서 요구사항을 "BFF를 거쳐라"가 아니라 **"호스트를 저장하지 마라"**로 세웠다 — [`REQUIREMENTS.md §5-8`](../REQUIREMENTS.md#5-8-fr-file--이미지-업로드).
 
 ### 3-2. `/uploads/**`가 두 곳을 보는 이유
 
@@ -123,80 +129,33 @@ flowchart TD
 | `file:./uploads/` | 런타임에 업로드된 파일 | 상대경로라 작업 디렉토리 기준으로 풀린다. gitignore 대상 |
 | `classpath:/static/uploads/` | 커밋된 시드 이미지 | 작업 디렉토리가 무엇이든, jar로 패키징돼도 항상 찾을 수 있다 |
 
-시드 이미지를 앞쪽에 두면 안 되는 이유 — 앞쪽은 gitignore되어 있어 **clone한 팀원에게 파일이 전달되지 않는다.**
+시드 이미지를 앞쪽에 두면 안 되는 이유 — 앞쪽은 gitignore되어 있어 **clone한 사람에게 파일이 전달되지 않는다.**
+
+이 이중 서빙이 C-07의 절충을 지탱한다. **인스턴스가 재생성되면 앞쪽은 비지만 뒤쪽은 남는다** — 업로드 이미지는 사라져도 시드 이미지는 살아남아 데모가 깨지지 않는다.
 
 ### 3-3. 설정 · 프로필
 
-| 항목 | 현재 |
+| 항목 | 구성 |
 | --- | --- |
-| 활성 프로필 | `dev` (`application.yml`에 하드코딩). 그 외 `test` |
-| 비밀값 주입 | `spring.config.import`로 `.env` 읽기 — `Backend/App/.env` 또는 레포 루트 기준 두 경로를 optional로 |
-| 스키마 | `ddl-auto: create` — 기동마다 드롭·재생성 후 `BaseInitData`가 시드 |
-| 시드 | 메뉴 3개 + 재고 **100 / 50 / 3**. 가드는 `menuRepository.count() > 0` |
-| CORS | `WebConfig.addCorsMappings` — `allowedOrigins`는 `localhost:3000` 하드코딩, **`allowedMethods`에 `PATCH`가 없다** |
-| 로깅 | `org.hibernate.orm.jdbc.bind: TRACE` — **손님 이메일이 로그에 찍힌다** |
+| 활성 프로필 | 환경변수로 정한다. `dev` / `test` / `prod` |
+| 비밀값 주입 | `jwt.secret` · `DB_PASSWORD`는 배포 환경의 시크릿으로. `.env.example`에는 키 이름만 |
+| 스키마 | **Flyway 마이그레이션.** `ddl-auto`를 쓰지 않는다 |
+| 시드 | `BaseInitData`가 `dev`에서만 — 메뉴 3개 + 재고 **100 / 50 / 3** + 점주 계정 1개 |
+| CORS | `SecurityConfig`의 `CorsConfigurationSource`. 허용 출처는 환경변수, 허용 메서드에 **`PATCH` 포함** |
+| 백엔드 주소 | 프론트는 환경변수로 받는다. 하드코딩 0곳 |
+| 로깅 | `prod`에서 SQL과 바인딩 파라미터를 끈다 — 손님 이메일이 로그에 남지 않도록 |
 
-마지막 재고가 **3**인 것은 우연이 아니라 [AC-09(마지막 한 잔)](../REQUIREMENTS.md#6-인수-기준)의 재현 조건이다.
+**CORS가 `WebConfig`가 아니라 `SecurityConfig`에 있는 이유**는 순서다. Security 필터체인은 `WebMvcConfigurer`의 CORS 설정보다 앞서 돌기 때문에, `.cors()`로 연결하지 않으면 preflight가 401이 된다. `/uploads/**` 정적 리소스 핸들러만 `WebConfig`에 남는다.
 
----
+**`PATCH`가 허용 메서드에 없으면** 주방 화면의 상태 변경과 관리자 화면의 재고 조정이 preflight에서 막힌다. 원인이 화면 코드가 아니라 서버 설정이라 디버깅에 시간을 버리기 딱 좋은 자리다.
 
-## 4. 런타임 구성 — 목표 (Phase 4 완료 시점)
-
-바뀌는 것만 굵게. 프로세스 구성 자체는 같고, **경계가 제대로 서는 것**이 차이다.
-
-```mermaid
-flowchart TD
-    subgraph BROWSER["브라우저"]
-        K["/ 키오스크<br/>손님 · 익명"]
-        KIT["/kitchen 주방<br/>바리스타"]
-        ADM["/admin 관리자<br/>점주"]
-    end
-
-    subgraph NEXT["Next.js :3000"]
-        BFF["<b>BFF Route Handler</b><br/>모든 요청의 유일한 통로<br/>+ Authorization: Bearer 주입"]
-    end
-
-    subgraph BOOT["Spring Boot :8080"]
-        SFC["<b>SecurityFilterChain</b><br/>JwtAuthenticationFilter"]
-        API["@RestController"]
-        SVC["Service<br/>+ 재고 차감 · 락"]
-    end
-
-    subgraph COMPOSE["Docker / AWS"]
-        PG[("PostgreSQL<br/><b>Flyway 마이그레이션</b>")]
-        RD[("<b>Redis</b><br/>Redisson 분산 락")]
-    end
-
-    K ==> BFF
-    KIT ==> BFF
-    ADM ==> BFF
-    BFF ==>|"NEXT_PUBLIC_API_BASE_URL"| SFC
-    SFC --> API
-    API --> SVC
-    SVC --> PG
-    SVC ==>|"락 전략 3 중 하나"| RD
-```
-
-### 무엇이 바뀌는가
-
-| 변경 | 현재 | 목표 | Phase | 요구사항 |
-| --- | --- | --- | --- | --- |
-| 화면 | `/` 하나에 손님·관리자 혼재 | `/` · `/kitchen` · `/admin` 3분할 | 1 | FR-KSK-05, FR-KIT-01, FR-ADM-01 |
-| 인증 | 없음. 요청 본문 이메일 비교 | `SecurityFilterChain` + `JwtAuthenticationFilter` | 1 | FR-AUTH-01~10 |
-| 토큰 | — | **BFF가 붙인다.** 브라우저가 직접 보내지 않는다 | 1 | FR-AUTH-09 |
-| CORS | `WebConfig`, `PATCH` 누락 | `SecurityConfig`의 `CorsConfigurationSource`, `PATCH` 포함 | 1 | — |
-| 재고 | `OrderService`가 `Stock`을 참조조차 안 함 | 주문 트랜잭션 안에서 `Stock.decrease()` | 2 | FR-STK-02~06 |
-| Redis | 컨테이너만 존재 | Redisson 분산 락으로 **처음 실사용** | 3 | NFR-CON-03 |
-| 이미지 업로드 | 브라우저 → :8080 직통 | BFF 경유 | 4 | FR-FILE-05 |
-| 백엔드 주소 | 프론트 하드코딩 9곳 | 환경변수 0곳 | 4 | NFR-OPS-02 |
-| 업로드 파일 보관 | 로컬 디스크 | 로컬 유지할지 오브젝트 스토리지로 옮길지 결론 | 4 | NFR-OPS-05 |
-| 스키마 | `ddl-auto: create` | Flyway 마이그레이션 | 4 | NFR-OPS-01 |
+마지막 시드 재고가 **3**인 것은 우연이 아니라 [AC-09(마지막 한 잔)](../REQUIREMENTS.md#6-인수-기준)의 재현 조건이다.
 
 ---
 
-## 5. 논리 계층과 패키지 구조
+## 4. 논리 계층과 패키지 구조
 
-### 5-1. 계층
+### 4-1. 계층
 
 ```mermaid
 flowchart TD
@@ -211,7 +170,8 @@ flowchart TD
         RS["RsData&lt;T&gt;<br/>응답 포맷"]
         GEH["GlobalExceptionHandler<br/>예외 → HTTP"]
         BE["BaseEntity<br/>id · createDate · modifyDate"]
-        WC["WebConfig<br/>CORS · 정적 리소스"]
+        SEC["SecurityConfig<br/>인가 정책 · CORS"]
+        WC["WebConfig<br/>정적 리소스"]
         INIT["BaseInitData<br/>dev 시드"]
     end
 
@@ -219,14 +179,17 @@ flowchart TD
     C -.-> RS
     C -.-> GEH
     E -.-> BE
+    C -.-> SEC
 
-    INV["<b>불변식은 엔티티가 소유한다</b><br/>· 상태 전이 → Order.startPreparing/markReady/complete/cancel<br/>· 금액 합산 → Order.addOrderItem<br/>· 가격 스냅샷 → OrderItem 생성자<br/>· 재고 증감 → Stock.decrease/increase ⬜ 예정"]
+    INV["<b>불변식은 엔티티가 소유한다</b><br/>· 상태 전이 → Order.startPreparing/markReady/complete/cancel<br/>· 금액 합산 → Order.addOrderItem<br/>· 가격 스냅샷 → OrderItem 생성자<br/>· 재고 증감 → Stock.decrease/increase"]
     E -.-> INV
 
     style INV stroke-width:2px
 ```
 
 **서비스는 규칙을 검사하지 않는다.** 엔티티를 조회해 메서드를 호출할 뿐이다. 총액이 아이템과 어긋날 수 있는 **경로 자체를 없애는 것**이 목적이다(NFR-DATA-01).
+
+**컨트롤러에 `@Transactional`이 없다.** 트랜잭션 경계가 컨트롤러까지 올라가면 서비스의 `@Transactional`은 바깥 트랜잭션에 합류할 뿐 자기 경계를 갖지 못하고, 낙관적 락 재시도가 구조적으로 불가능해진다(NFR-CON-05). §5-1 참고.
 
 예외 → HTTP 매핑은 `GlobalExceptionHandler`가 독점한다. 컨트롤러에서 try/catch로 상태코드를 만들지 않는다.
 
@@ -235,8 +198,9 @@ flowchart TD
 | `NoSuchElementException` | 404 |
 | `MethodArgumentNotValidException` · `IllegalArgumentException` · `MethodArgumentTypeMismatchException` · `HttpMessageNotReadableException` | 400 |
 | `InvalidOrderStatusTransitionException` | **409** |
+| `OutOfStockException` | **409** |
 
-### 5-2. 패키지 — 도메인별 수직 슬라이스
+### 4-2. 패키지 — 도메인별 수직 슬라이스
 
 ```
 com.cafekiosk
@@ -249,17 +213,29 @@ com.cafekiosk
 │   └── repository/  OrderRepository · OrderItemRepository · CustomerRepository
 ├── menu/
 │   ├── controller/  MenuController
-│   ├── service/     MenuService          ← ⚠ 인가를 요청 본문 이메일 비교로 한다
-│   ├── dto/         MenuDto · CreateMenuRequestDto · DeleteMenuRequestDto
+│   ├── service/     MenuService
+│   ├── dto/         MenuDto · CreateMenuRequestDto
 │   ├── entity/      Menu
 │   └── repository/  MenuRepository
 ├── stock/
-│   ├── entity/      Stock                ← ⚠ 증감 메서드가 없다
-│   └── repository/  StockRepository      ← ⚠ service · controller 자체가 없다 (죽은 도메인)
+│   ├── controller/  StockController
+│   ├── service/     StockService
+│   ├── entity/      Stock                 ← decrease / increase 를 소유
+│   ├── exception/   OutOfStockException
+│   └── repository/  StockRepository
+├── auth/
+│   ├── controller/  AuthController
+│   ├── service/     AuthService
+│   ├── jwt/         JwtTokenProvider
+│   ├── OwnerPrincipal
+│   └── JwtAuthenticationFilter
+├── owner/
+│   ├── entity/      Owner
+│   └── repository/  OwnerRepository
 ├── file/
-│   └── controller/  FileUploadController ← ⚠ service 없이 컨트롤러가 디스크에 직접 쓴다
+│   └── controller/  FileUploadController
 └── global/
-    ├── config/                  WebConfig
+    ├── config/                  SecurityConfig · WebConfig
     ├── globalExceptionHandler/  GlobalExceptionHandler
     ├── initData/                BaseInitData
     ├── jpa/entity/              BaseEntity
@@ -267,102 +243,93 @@ com.cafekiosk
     └── springDoc/               SpringDocConfig
 ```
 
-**`auth/` 패키지는 아직 없다.** [`jwt-auth.md`](jwt-auth.md)가 예정 위치를 `com.cafekiosk.auth.jwt.JwtTokenProvider`로 잡아뒀다.
+**`order`가 `stock`을 호출하는 방향이 있다.** `OrderService`가 `StockRepository`를 직접 잡지 않고 `StockService`를 거친다 — 도메인 경계를 넘을 때는 서비스를 통한다.
 
-**응답 포맷이 3종 혼재한다** — `RsData<T>`(`GET /api/orders`), raw record(`POST /api/order`), raw `String`(`POST /api/menu`). 신규 API는 예외 없이 `RsData<T>`다.
+**모든 응답은 `RsData<T>`다.** 예외 없다 — [`REQUIREMENTS.md §9-5`](../REQUIREMENTS.md#9-5-응답-규약).
 
-### 5-3. 프론트
+새 도메인을 추가할 땐 이 패턴을 따른다 — 최상위에 feature 패키지를 만들고 그 안에 레이어를 둔다. 여러 feature가 공유하는 것만 `global/`로 간다.
+
+### 4-3. 프론트
 
 ```
 frontend/src/app
-├── page.tsx              1230줄 단일 "use client" 컴포넌트 (손님 + 관리자 혼재)
+├── page.tsx                      /            키오스크 · 손님
+├── order/[orderNumber]/page.tsx  /order/{n}   주문 완료 · 조회 · 손님
+├── kitchen/page.tsx              /kitchen     주방 · 바리스타
+├── admin/page.tsx                /admin       관리자 · 점주
+├── login/page.tsx                /login       경유지
 ├── layout.tsx
-└── api/                  ★ 페이지용 API가 아니라 백엔드 프록시(BFF)다
-    ├── menu/route.ts             GET · POST   snake_case → camelCase 변환
-    ├── menu/[menuId]/route.ts    PUT · DELETE  params 가 Promise (Next 16)
-    ├── order/route.ts            POST          총 수량 1~100 조기 차단
-    └── order/history/route.ts    POST
+└── api/                          ★ 페이지용 API가 아니라 백엔드 프록시(BFF)다
+    ├── auth/login/route.ts       POST   토큰을 httpOnly 쿠키에 심는다
+    ├── auth/logout/route.ts      POST   쿠키를 지운다. 백엔드 호출 없음
+    ├── menu/route.ts             GET · POST
+    ├── menu/[menuId]/route.ts    PUT · DELETE   params 가 Promise (Next 16)
+    ├── order/route.ts            POST           총 수량 1~100 조기 차단
+    ├── orders/route.ts           GET            점주용 목록 · 상태 필터
+    ├── orders/[orderNumber]/route.ts  GET       대기번호 단건 조회
+    ├── orders/[orderId]/status/route.ts  PATCH  상태 전이
+    ├── stocks/[menuId]/route.ts  PATCH          재고 조정
+    └── upload/route.ts           POST           이미지 업로드
 ```
 
-BFF가 하는 일은 셋이다 — **입력 검증**(UX용 조기 차단), **필드명 변환**(핸들러마다 규칙이 다르다), **오류 메시지 정규화**(`message`/`msg`/`error` → `{ message }`).
+BFF가 하는 일은 넷이다 — **입력 검증**(UX용 조기 차단), **필드명 변환**(핸들러마다 규칙이 다르다), **오류 메시지 정규화**(`message`/`msg`/`error` → `{ message }`), 그리고 **토큰 보관과 주입**.
+
+**토큰이 여기 사는 것이 C-04의 핵심이다.** 브라우저가 토큰 문자열에 닿지 못하면 백엔드를 직접 부를 방법 자체가 없다 — FR-AUTH-11.
 
 ---
 
-## 6. 요청 흐름
+## 5. 요청 흐름
 
-### 6-1. 주문 생성 — 현재
+### 5-1. 주문 생성 ★
 
 ```mermaid
 sequenceDiagram
-    participant B as 브라우저
+    participant B as 브라우저 /
     participant F as BFF api/order
-    participant C as OrderController
-    participant S as OrderService
-    participant DB as PostgreSQL
-
-    B->>F: POST /api/order
-    F->>F: 총 수량 1~100 검사 (조기 차단)
-    F->>C: POST :8080/api/order
-    C->>C: @Valid CreateRequest
-    C->>S: createOrder(request)
-    activate S
-    Note over S: @Transactional 시작
-    S->>DB: findByEmail(email)
-    alt 없으면
-        S->>DB: save(new Customer)
-    end
-    S->>DB: save(new Order(customer, now))
-    S->>S: order.assignOrderNumber()
-    loop 아이템마다
-        S->>DB: menuRepository.findById(menuId)
-        S->>S: new OrderItem(order, menu, count)
-        Note right of S: 생성자가 menuPrice 를 orderPrice 로 복사<br/>= 가격 스냅샷
-        S->>S: order.addOrderItem(item)
-        Note right of S: totalPrice 합산은 여기서만 일어난다
-        S->>DB: save(orderItem)
-    end
-    Note over S: 커밋
-    deactivate S
-    S-->>C: CreateResponse
-    C-->>B: 대기번호 · 총액
-```
-
-> **⚠ `StockRepository`가 한 번도 등장하지 않는다.** 재고가 0이어도 무한히 주문된다. Phase 2에서 청산한다.
-
-### 6-2. 주문 생성 — 목표 (Phase 2 + 3)
-
-```mermaid
-sequenceDiagram
     participant C as OrderController
     participant S as OrderService
     participant L as 락 (비관적 / 낙관적 / Redisson)
     participant ST as Stock
     participant DB as PostgreSQL
 
+    B->>F: POST /api/order
+    F->>F: 총 수량 1~100 조기 차단
+    F->>C: POST /api/order
+    C->>C: @Valid CreateRequest
     C->>S: createOrder(request)
     activate S
-    Note over S: @Transactional 시작
+    Note over S: @Transactional 시작 — 경계는 여기다
+    S->>DB: 이메일로 주문 주체 조회 · 없으면 생성
     S->>S: 요청 아이템을 menuId 오름차순 정렬
     Note right of S: ★ 데드락 회피 — 모든 트랜잭션이<br/>같은 순서로 락을 잡는다 (NFR-CON-04)
+
     loop 정렬된 menuId 마다
         S->>L: 락 획득
         S->>DB: stockRepository.findByMenuId
         S->>ST: stock.decrease(count)
         alt 재고 부족
-            ST-->>S: 예외
+            ST-->>S: OutOfStockException
             Note over S,DB: 전체 롤백 — 부분 차감이 남지 않는다
             S-->>C: 409
         end
     end
+
+    S->>S: new OrderItem(order, menu, count)
+    Note right of S: 생성자가 menuPrice 를 orderPrice 로 복사<br/>= 가격 스냅샷
+    S->>S: order.addOrderItem(item)
+    Note right of S: totalPrice 합산은 여기서만 일어난다
     S->>DB: 주문 · 아이템 저장
+    S->>S: order.assignOrderNumber()
+    Note right of S: PK 채번 이후에 호출한다
     Note over S: 커밋 → 락 해제
     deactivate S
-    S-->>C: 대기번호
+    S-->>C: CreateResponse
+    C-->>B: 대기번호 · 결제 금액
 ```
 
-> **컨트롤러에 `@Transactional`이 없어야 한다**(NFR-CON-05). 낙관적 락 재시도는 롤백된 트랜잭션 **밖**, 새 트랜잭션에서 이뤄져야 하기 때문이다.
+> **컨트롤러에 `@Transactional`이 없어야 이 그림이 성립한다**(NFR-CON-05). 낙관적 락 재시도는 롤백된 트랜잭션 **밖**, 새 트랜잭션에서 이뤄져야 하기 때문이다. 같은 빈 안에서 self-invocation 하면 프록시를 타지 않아 재시도가 전부 같은 트랜잭션에서 돈다.
 
-### 6-3. 주방 폴링과 상태 전이 (Phase 1)
+### 5-2. 주방 폴링과 상태 전이
 
 ```mermaid
 sequenceDiagram
@@ -375,7 +342,7 @@ sequenceDiagram
 
     loop 3초마다
         K->>F: GET /api/orders?status=CONFIRMED
-        F->>C: GET :8080/api/orders
+        F->>C: Authorization: Bearer 주입 후 전달
         C->>S: getOrdersByStatus(status)
         S-->>C: List<OrderSummary>
         Note right of S: findAllByOrderByOrderTimeAsc<br/>= FIFO. 빈 결과도 200
@@ -394,9 +361,7 @@ sequenceDiagram
     end
 ```
 
-> **⚠ `WebConfig`의 `allowedMethods`에 `PATCH`가 없다.** 지금 상태로 `/kitchen`을 만들면 상태 변경이 preflight에서 막힌다. Phase 1에서 CORS를 `SecurityConfig`로 옮기면서 함께 고친다.
-
-전이 규칙은 `Order`가 소유한다. `PENDING`은 예약 값으로 서버 흐름에서 진입하지 않는다.
+전이 규칙은 `Order`가 소유한다.
 
 ```
 CONFIRMED ──startPreparing──> IN_PROGRESS ──markReady──> READY ──complete──> COMPLETED
@@ -404,12 +369,51 @@ CONFIRMED ──startPreparing──> IN_PROGRESS ──markReady──> READY �
     └──────── cancel ──────────────┴──> CANCELLED
 ```
 
-### 6-4. 인증된 요청 (Phase 1 목표)
+**`READY` 이후에는 취소가 없다.** 이미 만든 음료의 재고를 되돌리면 없는 재고가 생긴다. 손님이 찾아가지 않은 주문도 바리스타가 `COMPLETED`로 눌러 정리한다 — 그래서 `COMPLETED`는 "손님이 받아갔다"가 아니라 **"이 주문 끝"**을 뜻한다.
+
+### 5-3. 주문 취소와 재고 복구
+
+**순서가 이 흐름의 전부다.** 전이 검증이 먼저고 재고 복구가 나중이다.
 
 ```mermaid
 sequenceDiagram
-    participant A as /admin
+    participant K as /kitchen · /admin
+    participant C as OrderController
+    participant S as OrderService
+    participant O as Order (엔티티)
+    participant ST as Stock
+    participant G as GlobalExceptionHandler
+
+    K->>C: PATCH /api/order/{id}/status → CANCELLED
+    C->>S: changeStatus(orderId, CANCELLED)
+    activate S
+    Note over S: @Transactional 시작
+    S->>O: cancel()
+
+    alt CONFIRMED 또는 IN_PROGRESS
+        O-->>S: CANCELLED 로 전이
+        loop 주문 아이템마다
+            S->>ST: stock.increase(count)
+        end
+        Note over S: 커밋 — 전이와 복구가 한 트랜잭션
+        S-->>K: 200
+    else READY · COMPLETED · 이미 CANCELLED
+        O-->>G: InvalidOrderStatusTransitionException
+        Note over S,ST: 재고에 손대지 않는다 — 이중 복구 금지
+        G-->>K: 409
+    end
+    deactivate S
+```
+
+> **순서를 뒤집으면 취소되지 않은 주문의 재고가 늘어나 없는 재고가 생겨난다.** 전이 규칙을 `Order`가 소유하는 덕에 이중 복구 경로가 **구조적으로** 막혀 있다 — 재고 복구를 상태 검사 없이 서비스에서 호출하도록 바꾸는 순간 이 보호가 사라진다.
+
+### 5-4. 인증된 요청
+
+```mermaid
+sequenceDiagram
+    participant A as /admin · /kitchen
     participant F as BFF
+    participant CK as httpOnly 쿠키
     participant AC as AuthController
     participant FL as JwtAuthenticationFilter
     participant SC as SecurityContext
@@ -417,10 +421,13 @@ sequenceDiagram
 
     A->>F: 로그인 (email, password)
     F->>AC: POST /api/auth/login
+    AC->>AC: BCrypt 해시 대조
     AC-->>F: Access Token (HS256)
-    Note over F: ★ 토큰은 BFF 가 보관한다<br/>브라우저에 노출하지 않는다
+    F->>CK: Set-Cookie httpOnly · SameSite=Lax
+    Note over CK: ★ 브라우저 JS 는 이 값을 읽을 수 없다
 
     A->>F: 메뉴 수정 요청
+    F->>CK: 쿠키에서 토큰 읽기
     F->>FL: PUT /api/menus/{id}<br/>Authorization: Bearer ...
     Note over F: BFF 가 헤더를 붙인다 (FR-AUTH-09)
     FL->>FL: validate(token)
@@ -432,13 +439,19 @@ sequenceDiagram
     else 무효 · 없음
         FL-->>A: 401
     end
+
+    A->>F: 로그아웃
+    F->>CK: 쿠키 삭제
+    Note over F,CK: 백엔드 호출이 없다 — 무효화 엔드포인트를 두지 않는다
 ```
 
-클래스 상세는 [`jwt-auth.md`](jwt-auth.md)에 있다. 여기서 중요한 것은 **인가 판단의 근거가 "서버가 검증한 신원"으로 옮겨간다**는 것뿐이다(NFR-SEC-06).
+클래스 상세는 [`jwt-auth.md`](jwt-auth.md)에 있다. 여기서 중요한 것은 둘이다 — **인가 판단의 근거가 "서버가 검증한 신원"이라는 것**(NFR-SEC-06), 그리고 **토큰이 브라우저가 아니라 BFF에 산다는 것**(FR-AUTH-11).
+
+토큰 자체는 만료까지 유효하므로 stateless의 성질은 그대로다. 다만 쿠키가 지워지면 그 토큰을 다시 보낼 주체가 없어져 **실질 로그아웃이 성립한다** — Redis 블랙리스트가 필요 없는 이유다.
 
 ---
 
-## 7. 데이터 모델
+## 6. 데이터 모델
 
 모든 엔티티가 `BaseEntity`(`id` · `createDate` · `modifyDate`)를 상속한다. PK는 `IDENTITY` 전략.
 
@@ -458,7 +471,7 @@ erDiagram
         long customer_id FK
         string orderNumber UK "대기번호 · PK 파생"
         int totalPrice "addOrderItem 으로만 증가"
-        string status "enum · Order 가 전이 소유"
+        string status "enum 5종 · Order 가 전이 소유"
         datetime orderTime
     }
     ORDER_ITEM {
@@ -474,84 +487,73 @@ erDiagram
         int menuPrice "0 ~ 10,000,000"
         string category
         string imgUrl "호스트 없는 상대경로 /uploads/..."
-        string email "등록자 기록 · 인가에 쓰면 안 된다"
+        string email "등록자 기록 · 인가에 쓰지 않는다"
     }
     STOCK {
         long id PK
         long menu_id FK "unique · 1:1"
-        int quantity "음수 불가 · 증감 메서드 없음"
+        int quantity "음수 불가 · decrease/increase 만 변경"
+        long version "낙관적 락"
+    }
+    OWNER {
+        long id PK
+        string email UK
+        string passwordHash "평문 저장 금지"
     }
 ```
 
-### 아직 없는 것
+**`OWNER`는 다른 테이블과 관계를 갖지 않는다.** `Menu.email`이 등록자 기록이지만 FK가 아니다 — 1인 매장에서 메뉴별 소유자 분리는 실익이 없고 연쇄 수정 비용만 크다.
 
-| 엔티티 / 필드 | 용도 | Phase |
-| --- | --- | --- |
-| `Owner` (`email`, `passwordHash`) | 점주 인증. 평문 저장 금지 | 1 |
-| `Stock.version` (`@Version`) | 낙관적 락 | 3 |
-| `Stock.decrease()` / `increase()` | 재고 불변식의 소유자 | 2 |
-
-`Order`가 `Customer`를 `@ManyToOne(LAZY)`로, `OrderItem`을 `@OneToMany(cascade = ALL, orphanRemoval = true)`로 잡고 있다. `Customer`도 `Order`를 `cascade = {PERSIST, REMOVE}`로 들고 있어 **양방향**이다.
+`Order`가 `Customer`를 `@ManyToOne(LAZY)`로, `OrderItem`을 `@OneToMany(cascade = ALL, orphanRemoval = true)`로 잡는다. `Customer`도 `Order`를 `cascade = {PERSIST, REMOVE}`로 들고 있어 **양방향**이다.
 
 필드별 불변식과 소유자는 [`REQUIREMENTS.md §8`](../REQUIREMENTS.md#8-데이터-요구사항)이 정본이다.
 
 ---
 
-## 8. 경계 규약
+## 7. 경계 규약
 
 그림으로 표현되지 않지만 **깨지면 구조가 무너지는 것들**.
 
 | 규약 | 내용 | 근거 |
 | --- | --- | --- |
-| **BFF 단일 통로** | 브라우저는 :8080을 직접 호출하지 않는다. 백엔드 API를 바꾸면 BFF 핸들러도 같이 고친다 | C-04 |
+| **BFF 단일 통로** | 브라우저는 백엔드를 직접 호출하지 않는다. 백엔드 API를 바꾸면 BFF 핸들러도 같이 고친다 | C-04 |
+| **토큰은 BFF가 보관한다** | `httpOnly` 쿠키에 두고 요청마다 헤더로 바꿔 붙인다. 브라우저 JS가 토큰에 닿지 않는다 | FR-AUTH-09, FR-AUTH-11 |
 | **검증의 정본은 백엔드** | BFF 검증은 UX용 조기 차단이다. 지우면 UX가 나빠질 뿐 보안이 뚫리지는 않는다. 백엔드 검증을 지우면 뚫린다 | [§9-3](../REQUIREMENTS.md#9-3-검증-책임--어느-쪽이-정본인가) |
-| **예외 → HTTP는 한 곳** | `GlobalExceptionHandler`가 독점한다. 컨트롤러 try/catch 금지 | §5-1 |
-| **응답은 `RsData<T>`** | 신규 API는 예외 없이. 현재 3종 혼재는 부채 | FR-MNU-07 |
+| **예외 → HTTP는 한 곳** | `GlobalExceptionHandler`가 독점한다. 컨트롤러 try/catch 금지 | §4-1 |
+| **응답은 `RsData<T>`** | 예외 없이 | [§9-5](../REQUIREMENTS.md#9-5-응답-규약) |
 | **컨트롤러에 `@Transactional` 금지** | 낙관적 락 재시도의 전제 | NFR-CON-05 |
 | **불변식은 엔티티가 소유** | 서비스가 `if (quantity < count)`를 검사하지 않는다 | NFR-DATA-01 |
-| **토큰은 BFF가 붙인다** | 브라우저가 백엔드에 직접 토큰을 보내지 않는다 | FR-AUTH-09 |
+| **이미지 URL에 호스트를 담지 않는다** | 코드가 아니라 DB 행에 박히는 결함이라 되돌리기 어렵다 | FR-FILE-07 |
 
 ---
 
-## 9. 현재 구성의 균열
-
-구성도에 ⚠로 표시된 것들의 목록. **새 코드에서 이 패턴을 따라하지 않는다.**
-
-| 위치 | 무엇이 깨져 있나 | 구성도 | 청산 |
-| --- | --- | --- | --- |
-| `order/service/OrderService` | `Stock`을 참조조차 안 한다 — 재고 0이어도 무한 주문 | §6-1 | Phase 2 |
-| `menu/service/MenuService` | 인가가 요청 본문 이메일 문자열 비교 — 이메일만 알면 남의 메뉴를 수정·삭제 | §5-2 | Phase 1 |
-| `OrderController.changeStatus` · `FileUploadController` | 완전 공개 — 토큰 없이 호출 가능 | §4 | Phase 1 |
-| `page.tsx` (업로드 2곳) | 브라우저 → :8080 직통 | §3-1 ② | Phase 4 |
-| `WebConfig.addCorsMappings` | `allowedMethods`에 `PATCH` 없음 → 주방 화면 상태 변경이 preflight에서 막힌다 | §6-3 | Phase 1 |
-| 프론트 전역 | `localhost:8080` 하드코딩 9곳 — `src/` 8곳 + `next.config.ts` 1곳. **백엔드는 0곳이다** | §3 | Phase 4 |
-| `application.yml` | `ddl-auto: create` — 기동마다 데이터 소실 | §3-3 | Phase 4 |
-| `application.yml` | 바인딩 파라미터 TRACE 로깅 — 손님 이메일이 로그에 남는다 | §3-3 | Phase 4 |
-| `page.tsx` | 1230줄 단일 컴포넌트에 손님·관리자 UI 혼재 | §3 | Phase 1 |
-| `stock/` · `file/` | 계층이 비어 있다 (service·controller 없음 / service 없음) | §5-2 | Phase 2 |
-
----
-
-## 10. 테스트 구성
+## 8. 테스트 구성
 
 ```
 Backend/App/src/test/java/com/cafekiosk
 ├── support/AbstractIntegrationTest.java     ← Testcontainers PostgreSQL 기동. 모든 통합 테스트가 상속
-├── order/entity/OrderTest.java              ← POJO. Spring 컨텍스트 없이 상태 전이 검증
+├── order/entity/OrderTest.java              ← POJO. 컨텍스트 없이 상태 전이 검증
+├── stock/entity/StockTest.java              ← POJO. 컨텍스트 없이 재고 증감 검증
 ├── order/controller/OrderControllerTest.java
+├── order/service/OrderConcurrencyTest.java  ← ★ ExecutorService. MockMvc 미사용
 ├── menu/controller/MenuControllerTest.java
+├── auth/AuthIntegrationTest.java            ← 로그인 성공/실패 · 토큰 없이 401
+├── file/controller/FileUploadControllerTest.java
 ├── stock/repository/StockRepositoryIntegrationTest.java
 └── CafeKioskApplicationTests.java
 ```
 
 | 규약 | 내용 |
 | --- | --- |
-| **상속** | `@Testcontainers`/`@Container`를 개별 테스트에 붙이지 않는다. `AbstractIntegrationTest`를 상속한다 (NFR-TEST-02) |
+| **상속** | `@Testcontainers`/`@Container`를 개별 테스트에 붙이지 않는다. `AbstractIntegrationTest`를 상속한다. 이 조합은 테스트 클래스가 바뀔 때마다 컨테이너를 재시작해 `@DynamicPropertySource`가 잡아둔 포트를 무효화한다 (NFR-TEST-02) |
 | **경계** | 순수 로직(상태 전이, 재고 증감)은 컨텍스트 없이 POJO로 (NFR-TEST-06) |
-| **동시성 (Phase 3)** | `@Transactional`을 붙이지 않는다. `ExecutorService`로 서비스를 직접 호출하고 뒷정리는 `@AfterEach`가 한다 (NFR-TEST-03) |
+| **동시성** | `@Transactional`을 붙이지 않는다. 테스트 트랜잭션이 롤백되면 워커 스레드가 커밋한 내용을 검증할 수 없다. `ExecutorService`로 서비스를 직접 호출하고 뒷정리는 `@AfterEach`가 한다 (NFR-TEST-03) |
+| **커넥션 풀** | 동시성 테스트는 풀 크기를 명시하고 스레드 수와의 관계를 주석으로 남긴다. **풀 고갈을 락 문제로 오해하지 않기 위해서다** (NFR-TEST-04) |
 | **전제** | 테스트 실행에 **Docker 데몬이 필요하다** (C-06) |
 
-**CI(`.github/workflows/ci.yml`)는 `./gradlew test`만 돌린다.** 프론트엔드는 lint조차 검증되지 않으므로 FE 변경은 `npm run dev`로 직접 확인하고 PR에 스크린샷을 첨부한다. 프론트를 CI에 넣는 것은 Phase 4다(NFR-TEST-01).
+`AbstractIntegrationTest`가 `@AutoConfigureMockMvc`를 베이스에 두지 않는 이유가 동시성 테스트다 — 그쪽은 MockMvc를 거치지 않고 서비스를 직접 부른다.
+
+**CI는 백엔드 테스트와 프론트 lint·build를 모두 돌린다**(NFR-TEST-01). 다만 CI가 브라우저에서 화면이 실제로 도는 것까지 검증하지는 않으므로, AC-14는 수동 확인과 PR 스크린샷이 증거다.
 
 ---
 
