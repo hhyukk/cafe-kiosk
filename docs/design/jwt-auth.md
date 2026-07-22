@@ -20,9 +20,9 @@ JWT를 "만드는 쪽(`createAccessToken`)"과 "검증하고 까보는 쪽(`vali
 
 ```
 [로그인]  AuthService.login()
-            └─> createAccessToken(ownerId, email)  ──> JWT 문자열 발급 ──> 클라이언트가 보관
+            └─> createAccessToken(ownerId, email)  ──> JWT 문자열 발급 ──> BFF 가 보관
 
-[요청]    클라이언트가 Authorization: Bearer <JWT> 헤더로 요청
+[요청]    BFF 가 Authorization: Bearer <JWT> 헤더를 붙여 요청
             └─> JwtAuthenticationFilter
                   ├─> validate(token)        // 서명·만료 OK?
                   └─> getPrincipal(token)     // 클레임에서 OwnerPrincipal 복원
@@ -31,7 +31,9 @@ JWT를 "만드는 쪽(`createAccessToken`)"과 "검증하고 까보는 쪽(`vali
 
 발급은 `AuthService`에서, 검증은 `JwtAuthenticationFilter`에서 이 클래스를 호출한다. JwtTokenProvider 자신은 **누가 부르는지 모른다** — 토큰을 다루는 순수 책임만 가진다.
 
-> 이 흐름이 시스템 전체 어디에 놓이는지(BFF가 토큰을 붙이는 지점, 필터가 컨트롤러 앞에 서는 위치)는 [`architecture.md §6-4`](architecture.md#6-4-인증된-요청-phase-1-목표)에 있다.
+> **토큰을 보관하는 주체는 브라우저가 아니라 BFF다** — FR-AUTH-11. Next.js Route Handler가 발급받은 토큰을 `httpOnly` 쿠키에 심고, 이후 요청마다 그 쿠키를 읽어 헤더로 바꿔 붙인다. 브라우저 JS는 토큰 문자열에 닿지 못한다. 이 클래스 입장에서는 달라지는 것이 없지만, **누가 토큰을 들고 있느냐가 §10의 결론을 바꾼다.**
+>
+> 이 흐름이 시스템 전체 어디에 놓이는지는 [`architecture.md §5-4`](architecture.md#5-4-인증된-요청)에 있다.
 
 ---
 
@@ -195,6 +197,7 @@ private Claims parse(String token) {
 
 ## 10. 현재 한계 / 향후 개선 여지
 
-- **Refresh 토큰 없음**: 현재는 Access 토큰(1시간) 단일. 만료 시 재로그인 필요. 추후 Refresh 토큰 + 재발급 엔드포인트 도입 여지.
-- **토큰 무효화(로그아웃) 불가**: stateless 특성상 발급된 토큰은 만료 전까지 유효. 강제 로그아웃이 필요하면 Redis 블랙리스트 등 별도 장치 필요. (이 프로젝트의 Redis 활용 빈자리와 연결 가능)
-- **role이 `"OWNER"` 하드코딩**: 역할이 늘어나면 Owner 엔티티의 role 필드로 분리 고려.
+- **Refresh 토큰 없음**: 현재는 Access 토큰(1시간) 단일. 만료 시 재로그인 필요. 추후 Refresh 토큰 + 재발급 엔드포인트 도입 여지. (FR-AUTH-10 — 의도적 단순화)
+- **토큰 무효화는 쿠키 삭제로 대신한다**: stateless 특성상 발급된 토큰은 만료 전까지 유효하다는 사실 자체는 변하지 않는다. 다만 토큰을 브라우저가 아니라 **BFF가 `httpOnly` 쿠키로 들고 있으므로**(FR-AUTH-11), 쿠키를 지우면 그 토큰을 다시 보낼 주체가 사라진다. **Redis 블랙리스트 없이 실질 로그아웃이 성립한다** — FR-AUTH-12.
+  - 남는 한계는 하나다. **유출된 토큰은 만료까지 유효하다.** 쿠키 삭제는 정상 로그아웃을 처리할 뿐 탈취된 토큰을 무효화하지 못한다. 그 시나리오까지 막으려면 블랙리스트가 필요하고, 이 프로젝트에서는 만료 1시간으로 감수한다.
+- **role이 `"OWNER"` 하드코딩**: 역할이 늘어나면 Owner 엔티티의 role 필드로 분리 고려. 현재는 바리스타와 점주를 하나의 역할로 묶는 것이 의도된 설계다 — FR-AUTH-08.
