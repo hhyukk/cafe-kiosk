@@ -69,7 +69,7 @@ public class Order extends BaseEntity {
      *
      * 번호를 PK에서 파생시키는 이유: PK는 DB가 채번하므로(IDENTITY) 전역 유일하고 단조 증가한다.
      * "오늘 주문 수 + 1" 같은 방식은 조회와 삽입 사이에 경쟁이 생겨 번호가 겹칠 수 있는데,
-     * 그건 재고 동시성(Phase 3)에서 의도적으로 다룰 문제이지 대기번호에서 실수로 만들 문제가 아니다.
+     * 그건 Phase 2 의 재고 동시성에서 의도적으로 다룰 문제이지 대기번호에서 실수로 만들 문제가 아니다.
      */
     public void assignOrderNumber() {
         if (orderNumber != null) {

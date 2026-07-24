@@ -189,7 +189,7 @@ export default function Home() {
       });
 
       if (response.ok) {
-        // 손님은 대기번호를 받아간다. 전용 주문 완료 화면은 Phase 1에서 만든다.
+        // 손님은 대기번호를 받아간다. 전용 주문 완료 화면은 Phase 3 의 화면 3분할에서 만든다.
         const data = await response.json();
         alert(`주문이 완료되었습니다.\n대기번호 ${data.orderNumber}번`);
         setCart({});
