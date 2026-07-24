@@ -134,7 +134,7 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 ]
 ```
 
-현재 구현 메모. 필드가 snake_case다. menu_id, category, menu_name, price, img_url. 응답이 RsData로 감싸이지 않고 맨 배열로 내려간다. stock과 sold_out은 아직 없다. 재고를 붙이는 것은 Phase 2 이후다.
+현재 구현 메모. 필드가 snake_case다. menu_id, category, menu_name, price, img_url. 응답이 RsData로 감싸이지 않고 맨 배열로 내려간다. stock과 sold_out은 아직 없다. 재고를 붙이는 것은 Phase 1이다.
 
 #### POST /api/menu
 
@@ -238,7 +238,7 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 
 목표 동작. 주문 생성이 아이템 수량만큼 재고를 차감한다. FR-STK-02. 재고가 부족하면 주문 전체를 실패시키고 409를 준다. 부분 차감은 없다. FR-STK-03. 주문 생성과 재고 차감은 한 트랜잭션에서 전부 성공하거나 전부 실패한다. FR-ORD-08. 대기번호는 주문 PK에서 파생하며 전역 유일하고 단조 증가한다. FR-ORD-07. 각 아이템은 주문 시점 가격을 스냅샷으로 굳힌다. FR-ORD-05.
 
-현재 구현 메모. 응답이 봉투 없는 CreateResponse다. message, orderNumber, totalPrice를 맨 위에 담는다. 수량 위반 400과 검증 실패 400의 응답 형태가 서로 다르다. 수량 위반은 CreateResponse.rejected 모양이고, 검증 실패는 RsData 모양이다. 무엇보다 주문 생성이 재고를 한 번도 참조하지 않는다. 재고가 0이어도 주문이 무한히 성립한다. 재고 연결은 Phase 2, 동시성 보장은 Phase 3이다.
+현재 구현 메모. 응답이 봉투 없는 CreateResponse다. message, orderNumber, totalPrice를 맨 위에 담는다. 수량 위반 400과 검증 실패 400의 응답 형태가 서로 다르다. 수량 위반은 CreateResponse.rejected 모양이고, 검증 실패는 RsData 모양이다. 무엇보다 주문 생성이 재고를 한 번도 참조하지 않는다. 재고가 0이어도 주문이 무한히 성립한다. 재고 연결은 Phase 1, 동시성 보장은 Phase 2다.
 
 #### GET /api/order/{orderNumber}
 
@@ -436,16 +436,16 @@ BFF는 백엔드에 닿기 전에 필수 필드와 값 범위를 먼저 본다. 
 
 ## 6. 현재 구현과 목표의 차이 요약
 
-이 문서는 완성 기준으로 적었다. 아래는 지금 코드가 목표에 아직 못 미치는 지점을 모은 것이다. 자세한 진행 단계는 REQUIREMENTS.md의 구현 현황과 ROADMAP을 따른다.
+이 문서는 완성 기준으로 적었다. 아래는 지금 코드가 목표에 아직 못 미치는 지점을 모은 것이다. 진행 단계의 정본은 `docs/REQUIREMENTS.md` 10절이다.
 
 | 주제 | 목표 | 현재 | 단계 |
 | --- | --- | --- | --- |
-| 인증 | JWT와 httpOnly 쿠키, ROLE_OWNER 보호 | 없음, 본문 이메일 비교 | Phase 1 |
-| 인가 필드 | 서버 신원 기반, 본문에서 email 제거 | 메뉴 수정과 삭제 본문에 email | Phase 1 |
-| 손님 주문 조회 | 대기번호로 자기 주문만 | 이메일로 통째 조회 | Phase 1 |
-| 재고 차감 | 주문이 재고 차감, 부족하면 409 | 재고 미참조 | Phase 2 |
-| 재고 엔드포인트 | 조회와 조정 API | 없음 | Phase 2 |
-| 동시성 | 마지막 한 잔 정확히 한 명 성공 | 락 없음 | Phase 3 |
-| 응답 봉투 | RsData로 통일 | 평문, 맨 DTO, Map 혼재 | Phase 2 이후 |
-| CORS PATCH | 허용 메서드에 PATCH | 누락 | Phase 1 |
-| 백엔드 주소 | 환경 변수 | BFF 하드코딩 | Phase 4 |
+| 재고 차감 | 주문이 재고 차감, 부족하면 409 | 재고 미참조 | Phase 1 |
+| 재고 엔드포인트 | 조회와 조정 API | 없음 | Phase 1 |
+| 동시성 | 마지막 한 잔 정확히 한 명 성공 | 락 없음 | Phase 2 |
+| 인증 | JWT와 httpOnly 쿠키, ROLE_OWNER 보호 | 없음, 본문 이메일 비교 | Phase 3 |
+| 인가 필드 | 서버 신원 기반, 본문에서 email 제거 | 메뉴 수정과 삭제 본문에 email | Phase 3 |
+| 손님 주문 조회 | 대기번호로 자기 주문만 | 이메일로 통째 조회 | Phase 3 |
+| 응답 봉투 | RsData로 통일 | 평문, 맨 DTO, Map 혼재 | Phase 3 |
+| CORS PATCH | 허용 메서드에 PATCH | 누락 | Phase 3 |
+| 백엔드 주소 | 환경 변수 | BFF 하드코딩 | Phase 3 |

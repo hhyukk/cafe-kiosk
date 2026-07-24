@@ -66,7 +66,7 @@ public class OrderDto {
     }
 
     // 개별 주문(대기번호별) 요약 + 해당 주문의 아이템 목록
-    // orderId, status, orderTime 은 Phase 1에서 추가했다. 주방 화면이 읽을 데이터다.
+    // orderId, status, orderTime 은 주방 화면이 읽을 데이터다.
     public record OrderSummary(
             @NotNull Long orderId,
             @NotNull String orderNumber,

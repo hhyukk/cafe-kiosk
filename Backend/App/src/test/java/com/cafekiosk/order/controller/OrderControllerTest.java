@@ -464,7 +464,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.message").value("존재하지 않는 주문입니다: 999999"));
     }
 
-    // ── 점주/주방용 주문 목록 조회 GET /api/orders (Phase 1-1 신설) ──
+    // ── 점주/주방용 주문 목록 조회 GET /api/orders ──
     // 각 테스트는 @Transactional 로 롤백되고 BaseInitData 는 test 프로필에 주문을 심지 않으므로,
     // setup()이 만든 CONFIRMED 주문 1건만 존재하는 상태에서 시작한다.
 
@@ -478,7 +478,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resultCode").value("200-1"))
                 .andExpect(jsonPath("$.data.length()").value(1))
-                // Phase 1-1 의 진짜 목표. 이 세 필드가 실제로 응답에 담긴다
+                // 이 테스트의 진짜 목표. 이 세 필드가 실제로 응답에 담긴다
                 .andExpect(jsonPath("$.data[0].orderId").isNumber())
                 .andExpect(jsonPath("$.data[0].status").value("CONFIRMED"))
                 .andExpect(jsonPath("$.data[0].orderTime").isNotEmpty())

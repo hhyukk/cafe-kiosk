@@ -50,7 +50,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * ── @AutoConfigureMockMvc / @Transactional 을 여기에 두지 않는 이유 ──────────────
  *
  * 모든 통합 테스트가 MockMvc 를 필요로 하지 않는다.
- * 예) Week 3 동시성 테스트는 ExecutorService 로 서비스를 직접 호출하므로 MockMvc 불필요.
+ * 예) Phase 2 동시성 테스트는 ExecutorService 로 서비스를 직접 호출하므로 MockMvc 불필요.
  * 공통 필요 사항만 베이스 클래스에 두고, 각자 필요한 것은 서브클래스에서 선언한다.
  *
  * ── 전체 실행 흐름 ─────────────────────────────────────────────────────────────
