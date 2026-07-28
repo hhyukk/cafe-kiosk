@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -132,65 +131,8 @@ public class MenuControllerTest extends AbstractIntegrationTest {
 
     }
 
-    // ── 메뉴 삭제 DELETE /api/menu/delete/{menu_id} ──
-    //
-    // 이 두 테스트가 여기 있는 이유는 삭제 경로가 트랜잭션 경계에 의존하고 있기 때문이다.
-    // MenuService 는 클래스 레벨이 @Transactional(readOnly = true) 인데 deleteMenu 가 그걸 덮어쓰지 않는다.
-    // 지금 DELETE 가 나가는 유일한 이유는 MenuController.deleteMenu 의 @Transactional 에 참여해
-    // 안쪽의 readOnly 속성이 무시되기 때문이다. 컨트롤러에서 그 애너테이션을 걷어내는 순간
-    // 읽기 전용 트랜잭션에서 DELETE 를 시도하게 되고 PostgreSQL 이 거부한다.
-    // 걷어내기 전에 회귀 방지선부터 세운다.
-
-    @Test
-    @DisplayName("메뉴 삭제 - 등록자 이메일이 일치하면 200")
-    void t03() throws Exception {
-        long menuId = menuRepository.findAll().get(2).getId(); // 뉴욕치즈케이크
-
-        ResultActions resultActions = mvc
-                .perform(
-                        delete("/api/menu/delete/" + menuId)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                {
-                                    "email": "example@example.com"
-                                }
-                                """)
-                )
-                .andDo(print());
-
-        resultActions
-                .andExpect(handler().handlerType(MenuController.class))
-                .andExpect(handler().methodName("deleteMenu"))
-                .andExpect(status().isOk())
-                .andExpect(content().string("삭제되었습니다."));
-
-        // 응답 문자열만 보면 트랜잭션이 실제로 지웠는지 알 수 없다. 행이 사라졌는지 직접 확인한다.
-        assertThat(menuRepository.findById(menuId)).isEmpty();
-    }
-
-    @Test
-    @DisplayName("메뉴 삭제 - 등록자 이메일이 다르면 401 이고 메뉴는 남는다")
-    void t04() throws Exception {
-        long menuId = menuRepository.findAll().get(2).getId(); // 뉴욕치즈케이크
-
-        ResultActions resultActions = mvc
-                .perform(
-                        delete("/api/menu/delete/" + menuId)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                {
-                                    "email": "stranger@example.com"
-                                }
-                                """)
-                )
-                .andDo(print());
-
-        resultActions
-                .andExpect(handler().handlerType(MenuController.class))
-                .andExpect(handler().methodName("deleteMenu"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(content().string("이메일이 잘못되었거나 삭제 권한이 없습니다."));
-
-        assertThat(menuRepository.findById(menuId)).isPresent();
-    }
+    // 메뉴 생성과 삭제가 실제로 DB 에 반영되는지는 MenuWriteTransactionTest 가 지킨다.
+    // 이 클래스는 @Transactional 이라 서비스의 readOnly 트랜잭션이 여기 참여만 하고
+    // readOnly 속성이 무시된다. 검증하려는 트랜잭션 경계 결함이 통째로 가려지므로
+    // 그 방지선은 @Transactional 없는 클래스로 옮겼다.
 }
