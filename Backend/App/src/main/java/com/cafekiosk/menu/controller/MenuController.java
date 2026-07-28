@@ -15,7 +15,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -33,7 +32,6 @@ public class MenuController {
             @ApiResponse(responseCode = "200-1", description = "조회 성공")
     })
     @GetMapping
-    @Transactional(readOnly = true)
     public List<MenuListResponse> getMenus() {
         List<Menu> menus = menuService.findAll();
         return menus
@@ -82,7 +80,6 @@ public class MenuController {
 
 
     @PostMapping //추가기능
-    @Transactional
     public ResponseEntity<String> createMenu(
             @Valid @RequestBody CreateMenuRequestDto req
     ) {
@@ -98,7 +95,6 @@ public class MenuController {
     }
 
     @DeleteMapping("/delete/{menu_id}")
-    @Transactional
     public ResponseEntity<String> deleteMenu(
             @PathVariable Long menu_id,
             @RequestBody @Valid DeleteMenuRequestDto req

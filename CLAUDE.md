@@ -82,9 +82,11 @@ com.cafekiosk
 - JUnit 5와 AssertJ. `@DisplayName`은 한국어 문장, 메서드명은 `should_정상흐름_전이는_성공한다` 스타일.
 - `./gradlew test`에는 Docker 데몬이 떠 있어야 한다.
 
-회귀 방지선이 둘 있다. `OrderControllerTest`의 가격 스냅샷 테스트는 조회 경로가 `orderItem.getOrderPrice` 대신 `getMenu().getMenuPrice`를 읽는 순간 잡아낸다. `FileUploadControllerTest`는 업로드 응답 URL에 호스트가 붙는 순간 잡아낸다.
+회귀 방지선이 셋 있다. `OrderControllerTest`의 가격 스냅샷 테스트는 조회 경로가 `orderItem.getOrderPrice` 대신 `getMenu().getMenuPrice`를 읽는 순간 잡아낸다. `FileUploadControllerTest`는 업로드 응답 URL에 호스트가 붙는 순간 잡아낸다. `MenuWriteTransactionTest`는 메뉴 생성과 삭제가 readOnly 트랜잭션에 갇혀 SQL이 조용히 사라지는 순간 잡아낸다.
 
-앞으로 쓸 동시성 테스트에는 `@Transactional`을 붙이지 않는다. `ExecutorService`로 서비스를 직접 부른다. 테스트가 트랜잭션 안에서 돌면 동시성이 사라진다. 베이스가 `@AutoConfigureMockMvc`를 갖지 않는 이유가 이것이다.
+**검증 대상이 트랜잭션 경계이면 테스트에 `@Transactional`을 붙이지 않는다.** 붙이는 순간 테스트가 read-write 트랜잭션을 먼저 열어, 서비스의 `readOnly = true`가 거기 참여만 하고 속성이 무시된다. 잡으려던 결함이 통째로 가려진다. `MenuWriteTransactionTest`가 `@Transactional` 없이 서서 만든 행을 `@AfterEach`로 직접 지우는 이유가 이것이다.
+
+앞으로 쓸 동시성 테스트에도 같은 이유로 `@Transactional`을 붙이지 않는다. `ExecutorService`로 서비스를 직접 부른다. 테스트가 트랜잭션 안에서 돌면 동시성이 사라진다. 베이스가 `@AutoConfigureMockMvc`를 갖지 않는 이유가 이것이다.
 
 ## 프론트 규약
 
@@ -109,7 +111,6 @@ Next 16이라 라우트 핸들러의 `params`는 `Promise`다. `context: { param
 | dev 프로필은 재기동마다 스키마를 드롭하고 시드를 다시 심는다. `ddl-auto: create` | `application.yml` |
 | `OrderService`가 `Stock`을 참조하지 않는다. 재고가 0이어도 주문이 성립한다. 설계 의도가 아니라 미완성이다 | `order/service/OrderService.java` |
 | 인가가 요청 본문 이메일 문자열 비교뿐이다. 이메일만 알면 남의 메뉴를 고칠 수 있다 | `menu/service/MenuService.java` |
-| `OrderController`에 `@Transactional`이 붙어 있다. 낙관적 락 재시도를 막으므로 걷어낼 대상이다 | `order/controller/OrderController.java` |
 | 응답 봉투가 섞여 있다. 맨 배열, 평문 문자열, Map, 봉투 없는 DTO. 새 코드는 `RsData`로 통일한다 | `MenuController`, `FileUploadController` |
 | CORS 허용 메서드에 PATCH가 없다. 브라우저가 상태 변경을 직접 부르면 막힌다 | `global/config/WebConfig.java` |
 | `page.tsx`가 1230줄 단일 클라이언트 컴포넌트다. 국소 수정만 하고 전체를 다시 쓰지 않는다 | `frontend/src/app/page.tsx` |

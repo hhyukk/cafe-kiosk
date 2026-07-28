@@ -14,7 +14,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,8 +39,11 @@ public class OrderController {
                     content = @Content(schema = @Schema(implementation = OrderDto.CreateResponse.class))),
             @ApiResponse(responseCode = "400-1", description = "요청 데이터 유효성 검사 실패")
     })
+    // 컨트롤러에 @Transactional 을 붙이지 않는다. 낙관적 락 재시도는 롤백된 트랜잭션 밖
+    // 새 트랜잭션에서 일어나야 하는데(NFR-CON-05), 여기서 트랜잭션을 열면 재고 차감이 실패해
+    // 롤백돼도 바깥 트랜잭션이 살아 있어 재시도가 이미 죽은 트랜잭션 안에서 벌어진다.
+    // 트랜잭션 경계는 전부 OrderService 가 갖는다.
     @PostMapping("/api/order")
-    @Transactional
     public ResponseEntity<OrderDto.CreateResponse> createOrder(
             @Valid @RequestBody OrderDto.CreateRequest request) {
 
@@ -61,7 +63,6 @@ public class OrderController {
     }
 
     @PostMapping("/api/order/list")
-    @Transactional(readOnly = true)
     public ResponseEntity<OrderDto.OrderListResponse> orderList(
             @Parameter(description = "조회할 고객의 이메일", example = "user@example.com")
             @Valid
@@ -85,7 +86,6 @@ public class OrderController {
             @ApiResponse(responseCode = "400-1", description = "status 파라미터 값이 올바르지 않음")
     })
     @GetMapping("/api/orders")
-    @Transactional(readOnly = true)
     public RsData<List<OrderDto.OrderSummary>> getOrders(
             @Parameter(description = "필터링할 주문 상태. 생략 시 전체 조회", example = "IN_PROGRESS")
             @RequestParam(required = false) OrderStatus status
@@ -109,7 +109,6 @@ public class OrderController {
     })
 
     @PatchMapping("/api/order/{orderId}/status")
-    @Transactional
     public ResponseEntity<OrderDto.ChangeStatusResponse> changeStatus(
             @PathVariable Long orderId,
             @Valid @RequestBody OrderDto.ChangeStatusRequest request) {
