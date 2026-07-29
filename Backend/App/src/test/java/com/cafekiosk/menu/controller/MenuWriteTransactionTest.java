@@ -16,10 +16,12 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.handler;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -101,9 +103,9 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("메뉴 삭제 - 등록자 이메일이 일치하면 200 이고 행이 사라진다")
+    @DisplayName("메뉴 삭제 - 등록자 이메일이 일치하면 200 이고 행은 남되 판매가 중단된다")
     void 메뉴삭제가_DB에_반영된다() throws Exception {
-        Menu menu = 메뉴를_심는다("뉴욕치즈케이크", "example@example.com");
+        Menu menu = 메뉴를_심는다("판매 중단 확인용 케이크", "example@example.com");
 
         mvc.perform(
                         delete("/api/menu/delete/" + menu.getId())
@@ -120,11 +122,26 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string("삭제되었습니다."));
 
-        assertThat(menuRepository.findById(menu.getId())).isEmpty();
+        // 소프트 삭제는 두 얼굴을 함께 만족해야 한다. 하나만 보면 절반만 검증된다.
+        //
+        // 첫째, 행은 남아 있고 deleted_at 이 채워졌다. 이 단언이 readOnly 트랜잭션에
+        // 갇혀 UPDATE 가 사라지는 결함을 잡는다. 하드 삭제 시절 DELETE 가 사라지던 것과
+        // 같은 함정이고, 그래서 이 클래스는 여전히 @Transactional 없이 서 있다.
+        Menu 커밋된메뉴 = menuRepository.findById(menu.getId()).orElseThrow();
+        assertThat(커밋된메뉴.isDiscontinued()).isTrue();
+
+        // 둘째, 판매중 조회에서는 사라졌다. 리포지토리와 HTTP 두 층에서 함께 본다.
+        // 이름이 아니라 menu_id 로 거르는 이유는 이 클래스가 롤백 없이 도는 탓에
+        // 다른 테스트가 남긴 행이 목록에 섞일 수 있어서다. id 는 이 테스트가 만든 행 하나만 가리킨다.
+        assertThat(menuRepository.findByIdAndDeletedAtIsNull(menu.getId())).isEmpty();
+
+        mvc.perform(get("/api/menu"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.menu_id == %d)]".formatted(menu.getId())).isEmpty());
     }
 
     @Test
-    @DisplayName("메뉴 삭제 - 등록자 이메일이 다르면 401 이고 메뉴는 남는다")
+    @DisplayName("메뉴 삭제 - 등록자 이메일이 다르면 401 이고 메뉴는 판매중 그대로다")
     void 등록자가_아니면_메뉴가_지워지지_않는다() throws Exception {
         Menu menu = 메뉴를_심는다("남의 뉴욕치즈케이크", "example@example.com");
 
@@ -143,6 +160,9 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().string("이메일이 잘못되었거나 삭제 권한이 없습니다."));
 
-        assertThat(menuRepository.findById(menu.getId())).isPresent();
+        // 행이 남아 있다는 것만으로는 이제 아무것도 증명하지 못한다. 소프트 삭제는
+        // 성공해도 행을 남기기 때문이다. 판매중인 채로 남았는지까지 봐야 한다.
+        Menu 커밋된메뉴 = menuRepository.findById(menu.getId()).orElseThrow();
+        assertThat(커밋된메뉴.isDiscontinued()).isFalse();
     }
 }

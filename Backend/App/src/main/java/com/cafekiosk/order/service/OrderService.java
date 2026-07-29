@@ -45,12 +45,14 @@ public class OrderService {
         order.assignOrderNumber();
 
         for (OrderDto.OrderItemRequest itemRequest : request.items()) {
-            Menu menu = menuRepository.findById(itemRequest.menuId())
+            // 판매 중단된 메뉴는 없는 메뉴와 같은 400 을 받는다. 손님 화면에는
+            // 판매중 메뉴만 보이므로 이 경로는 화면이 오래된 목록을 들고 있을 때만 닿는다.
+            Menu menu = menuRepository.findByIdAndDeletedAtIsNull(itemRequest.menuId())
                     .orElseThrow(() -> new IllegalArgumentException(
                             "존재하지 않는 메뉴입니다: " + itemRequest.menuId()
                     ));
 
-            // 가격 스냅샷은 OrderItem 생성자가, 총액 합산은 Order 가 책임진다
+            // 이름과 가격 스냅샷은 OrderItem 생성자가, 총액 합산은 Order 가 책임진다
             OrderItem orderItem = new OrderItem(order, menu, itemRequest.count());
             order.addOrderItem(orderItem);
             orderItemRepository.save(orderItem);
@@ -129,8 +131,9 @@ public class OrderService {
                 ? orderRepository.findAllByOrderByOrderTimeAsc()
                 : orderRepository.findByStatusOrderByOrderTimeAsc(status);
 
-        // N+1: order 별로 orderItems 와 menu 를 lazy 순회한다. 주방 활성 주문은 소량이라
+        // N+1: order 별로 orderItems 를 lazy 순회한다. 주방 활성 주문은 소량이라
         //      지금은 허용한다. fetch join 최적화는 이후로 미룬다.
+        //      이름 스냅샷이 붙은 뒤로 menu 프록시는 더 이상 초기화하지 않는다.
         List<OrderDto.OrderSummary> result = new ArrayList<>();
         for (Order order : orders) {
             List<OrderDto.OrderItemDTO> items = order.getOrderItems().stream()
@@ -141,11 +144,12 @@ public class OrderService {
         return result;
     }
 
-    // 가격 스냅샷을 읽는 유일한 지점. 여기서 menu.getMenuPrice() 를 읽으면
-    // 과거 주문 금액이 현재 메뉴 가격으로 소급 변경되고, 가격 스냅샷 회귀 테스트가 잡는다.
+    // 스냅샷을 읽는 유일한 지점이다. 여기서 orderItem.getMenu() 를 거쳐 이름이나 가격을
+    // 읽는 순간 과거 주문이 현재 메뉴 값으로 소급 변경되고, 두 스냅샷 회귀 테스트가 잡는다.
+    // 이 메서드가 menu 를 건드리지 않는 덕분에 판매 중단된 메뉴가 섞인 주문도 그대로 조회된다.
     private OrderDto.OrderItemDTO toItemDTO(OrderItem orderItem) {
         return new OrderDto.OrderItemDTO(
-                orderItem.getMenu().getMenuName(),
+                orderItem.getMenuName(),
                 orderItem.getOrderPrice(),
                 orderItem.getCount()
         );
