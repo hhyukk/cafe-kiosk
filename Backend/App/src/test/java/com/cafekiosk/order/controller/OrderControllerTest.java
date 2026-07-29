@@ -305,6 +305,84 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("이름 스냅샷 - 메뉴 이름을 바꿔도 과거 주문의 품목명은 변하지 않는다")
+    void 이름스냅샷_메뉴이름변경이_과거주문에_소급되지_않는다() {
+        // given: setup()이 심은 주문의 품목은 아메리카노와 카페라떼다
+        String email = "order@example.com";
+
+        OrderDto.OrderListResponse 주문직후 = orderService.getOrderList(email);
+        assertThat(주문직후.orders().get(0).items())
+                .extracting(OrderDto.OrderItemDTO::menuName)
+                .containsExactly("아메리카노", "카페라떼");
+
+        // when: 점주가 메뉴 이름을 바꾼다. 가격은 건드리지 않는다
+        menu1.modify("아이스 아메리카노", 3000, "img1", "커피");
+        menu2.modify("바닐라 라떼", 4000, "img2", "커피");
+        menuRepository.saveAll(List.of(menu1, menu2));
+
+        // then: 이미 지나간 주문의 품목명은 그대로여야 한다.
+        // 스냅샷이 없다면 여기서 아이스 아메리카노와 바닐라 라떼가 나온다.
+        OrderDto.OrderListResponse 이름변경후 = orderService.getOrderList(email);
+        assertThat(이름변경후.orders().get(0).items())
+                .extracting(OrderDto.OrderItemDTO::menuName)
+                .containsExactly("아메리카노", "카페라떼");
+    }
+
+    @Test
+    @DisplayName("소프트 삭제 - 판매를 중단한 메뉴의 과거 주문도 온전히 조회된다")
+    void 판매중단된_메뉴의_과거주문이_그대로_조회된다() {
+        // given
+        String email = "order@example.com";
+
+        // when: 점주가 아메리카노 판매를 중단한다.
+        // 하드 삭제였다면 order_item.menu_id 외래키에 걸려 이 자리에서 죽는다.
+        menu1.discontinue();
+        menuRepository.save(menu1);
+
+        // then: 이름도 금액도 총액도 그대로다. 조회 경로가 menu 행을 읽지 않기 때문이다
+        OrderDto.OrderListResponse 판매중단후 = orderService.getOrderList(email);
+        OrderDto.OrderSummary 주문 = 판매중단후.orders().get(0);
+
+        assertThat(주문.totalPrice()).isEqualTo(10000);
+        assertThat(주문.items())
+                .extracting(OrderDto.OrderItemDTO::menuName)
+                .containsExactly("아메리카노", "카페라떼");
+        assertThat(주문.items())
+                .extracting(OrderDto.OrderItemDTO::orderPrice)
+                .containsExactly(3000, 4000);
+    }
+
+    @Test
+    @DisplayName("주문 생성 실패 - 판매를 중단한 메뉴")
+    void 판매중단된_메뉴는_주문할_수_없다() throws Exception {
+        // given
+        menu1.discontinue();
+        menuRepository.save(menu1);
+
+        String requestBody = """
+                {
+                    "email": "test@test.com",
+                    "items": [
+                        {
+                            "menuId": %d,
+                            "count": 1
+                        }
+                    ]
+                }
+                """.formatted(menu1.getId());
+
+        // 판매 중단은 손님 입장에서 없는 메뉴와 구분되지 않는다.
+        // 그래서 없는 id 와 같은 400 과 같은 메시지로 나간다.
+        mvc.perform(post("/api/order")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andDo(print())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.resultCode").value("400-1"))
+                .andExpect(jsonPath("$.message").value("존재하지 않는 메뉴입니다: " + menu1.getId()));
+    }
+
+    @Test
     @DisplayName("주문 생성 실패 - 주문 아이템 누락")
     void t7() throws Exception {
         String requestBody = """
