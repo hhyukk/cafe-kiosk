@@ -129,8 +129,9 @@ public class OrderService {
                 ? orderRepository.findAllByOrderByOrderTimeAsc()
                 : orderRepository.findByStatusOrderByOrderTimeAsc(status);
 
-        // N+1: order 별로 orderItems 와 menu 를 lazy 순회한다. 주방 활성 주문은 소량이라
+        // N+1: order 별로 orderItems 를 lazy 순회한다. 주방 활성 주문은 소량이라
         //      지금은 허용한다. fetch join 최적화는 이후로 미룬다.
+        //      이름 스냅샷이 붙은 뒤로 menu 프록시는 더 이상 초기화하지 않는다.
         List<OrderDto.OrderSummary> result = new ArrayList<>();
         for (Order order : orders) {
             List<OrderDto.OrderItemDTO> items = order.getOrderItems().stream()
@@ -141,11 +142,11 @@ public class OrderService {
         return result;
     }
 
-    // 가격 스냅샷을 읽는 유일한 지점. 여기서 menu.getMenuPrice() 를 읽으면
-    // 과거 주문 금액이 현재 메뉴 가격으로 소급 변경되고, 가격 스냅샷 회귀 테스트가 잡는다.
+    // 스냅샷을 읽는 유일한 지점이다. 여기서 orderItem.getMenu() 를 거쳐 이름이나 가격을
+    // 읽는 순간 과거 주문이 현재 메뉴 값으로 소급 변경되고, 두 스냅샷 회귀 테스트가 잡는다.
     private OrderDto.OrderItemDTO toItemDTO(OrderItem orderItem) {
         return new OrderDto.OrderItemDTO(
-                orderItem.getMenu().getMenuName(),
+                orderItem.getMenuName(),
                 orderItem.getOrderPrice(),
                 orderItem.getCount()
         );
