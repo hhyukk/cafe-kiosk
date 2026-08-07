@@ -2,9 +2,11 @@ package com.cafekiosk.order.dto;
 
 import com.cafekiosk.order.entity.Order;
 import com.cafekiosk.order.entity.OrderStatus;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,15 +21,20 @@ public class OrderDto {
 
     public record ChangeStatusResponse(String message) {}
 
+    // items 에 @Valid 를 붙여야 각 OrderItemRequest 의 제약까지 검증이 전파된다.
+    // @NotNull 만 두면 리스트가 비어 있지 않은지만 보고 요소 안은 들여다보지 않는다.
     public record CreateRequest(
             @NotBlank @Email String email,
-            @NotNull List<OrderItemRequest> items
+            @NotNull @Valid List<OrderItemRequest> items
     ) {
     }
 
+    // count 는 원시 int 라 @NotNull 이 아무 일도 하지 않는다. 0 이나 음수를 막는 것은 @Positive 다.
+    // 컨트롤러의 총 수량 검사는 합계 기준이라 5개와 -3개가 섞인 요청을 합계 2로 통과시킨다.
+    // 그러면 order_item.count CHECK 에 걸려 400 이어야 할 요청이 500 이 된다.
     public record OrderItemRequest(
             @NotNull Long menuId,
-            @NotNull int count
+            @Positive int count
     ) {
     }
 

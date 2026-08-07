@@ -8,7 +8,13 @@ import lombok.*;
 import static jakarta.persistence.FetchType.LAZY;
 
 @Entity
-@Table(name = "order_item")
+// count 에 CHECK 를 거는 이유는 0개짜리 아이템이 어떤 경로로도 의미가 없기 때문이다.
+// 한 주문의 총 수량 1개 이상 100개 이하는 언제든 바뀔 수 있는 정책이라 컨트롤러가 검사한다.
+// 여기 새기는 것은 아이템 하나의 수량이 양수여야 한다는 불변식뿐이다.
+@Table(
+        name = "order_item",
+        check = @CheckConstraint(name = "ck_order_item_count_positive", constraint = "count > 0")
+)
 @Getter
 @NoArgsConstructor
 public class OrderItem extends BaseEntity {
