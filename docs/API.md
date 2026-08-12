@@ -44,7 +44,7 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 | 400 | 400-1 | 본문 검증 실패, 잘못된 파라미터, 읽을 수 없는 본문 | MethodArgumentNotValidException, IllegalArgumentException, MethodArgumentTypeMismatchException, HttpMessageNotReadableException |
 | 401 | 미정 | 인증 실패, 토큰 없음 | 목표, Spring Security |
 | 404 | 404-1 | 대상 데이터 없음 | NoSuchElementException |
-| 409 | 409-1 | 허용되지 않은 주문 상태 전이, 재고 부족 | InvalidOrderStatusTransitionException, 목표의 OutOfStockException |
+| 409 | 409-1 | 허용되지 않은 주문 상태 전이, 재고 부족 | InvalidOrderStatusTransitionException, OutOfStockException |
 
 ### 2-3. 인증
 
@@ -242,13 +242,19 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 }
 ```
 
-상태 코드. 200 성공, 400 수량 위반이나 검증 실패, 409 재고 부족.
+상태 코드. 200 성공, 400 수량 위반이나 검증 실패나 없는 메뉴, 409 재고 부족, 500 재고 행이 없는 메뉴.
 
-목표 동작. 주문 생성이 아이템 수량만큼 재고를 차감한다. FR-STK-02. 재고가 부족하면 주문 전체를 실패시키고 409를 준다. 부분 차감은 없다. FR-STK-03. 주문 생성과 재고 차감은 한 트랜잭션에서 전부 성공하거나 전부 실패한다. FR-ORD-08. 대기번호는 주문 PK에서 파생하며 전역 유일하고 단조 증가한다. FR-ORD-07. 각 아이템은 주문 시점의 가격과 이름을 스냅샷으로 굳힌다. FR-ORD-05, FR-ORD-11.
+주문 생성이 아이템 수량만큼 재고를 차감한다. FR-STK-02. 재고가 부족하면 주문 전체를 실패시키고 409를 준다. 부분 차감은 없다. FR-STK-03. 주문 생성과 재고 차감은 한 트랜잭션에서 전부 성공하거나 전부 실패한다. FR-ORD-08. 대기번호는 주문 PK에서 파생하며 전역 유일하고 단조 증가한다. FR-ORD-07. 각 아이템은 주문 시점의 가격과 이름을 스냅샷으로 굳힌다. FR-ORD-05, FR-ORD-11.
+
+재고에 닿는 순서는 menuId 오름차순으로 고정한다. 요청 본문의 아이템 순서와 무관하다. 락이 없는 지금은 결과가 달라지지 않지만, 두 손님이 같은 두 메뉴를 반대 순서로 담았을 때 서로가 쥔 행을 기다리는 상황을 만들지 않기 위한 것이다. NFR-CON-04.
 
 판매를 중단한 메뉴는 주문할 수 없다. 없는 메뉴 id와 같은 400 존재하지 않는 메뉴입니다를 받는다. 손님 화면에는 판매중 메뉴만 보이므로 이 경로는 화면이 오래된 목록을 들고 있을 때만 닿고, 손님 입장에서 둘은 구분되지 않는다.
 
-현재 구현 메모. 응답이 봉투 없는 CreateResponse다. message, orderNumber, totalPrice를 맨 위에 담는다. 수량 위반 400과 검증 실패 400의 응답 형태가 서로 다르다. 수량 위반은 CreateResponse.rejected 모양이고, 검증 실패는 RsData 모양이다. 무엇보다 주문 생성이 재고를 한 번도 참조하지 않는다. 재고가 0이어도 주문이 무한히 성립한다. 재고 연결은 Phase 1, 동시성 보장은 Phase 2다.
+현재 구현 메모. 응답이 봉투 없는 CreateResponse다. message, orderNumber, totalPrice를 맨 위에 담는다. 수량 위반 400과 검증 실패 400의 응답 형태가 서로 다르다. 수량 위반은 CreateResponse.rejected 모양이고, 검증 실패는 RsData 모양이다. 재고 부족 409는 RsData 모양이며 메시지에 메뉴 이름 대신 menuId가 담긴다. 손님에게 어떤 메뉴가 품절인지 이름으로 알리는 것은 손님 화면을 만드는 단계에서 정한다.
+
+재고 행이 없는 메뉴를 주문하면 500이다. 400이나 409로 흡수하지 않는다. `docs/ERD.md` 3-4가 재고 없는 메뉴를 다루는 방법이 아니라 만들지 않는 방법을 규정했기 때문이다. 지금은 메뉴 등록이 재고 행을 함께 만들지 않아 새로 등록한 메뉴가 실제로 이 경로에 닿는다. 시드 메뉴 셋은 재고를 함께 심으므로 해당 없다. 메뉴 등록과 재고 행 생성을 한 트랜잭션으로 묶으면 원인이 사라진다.
+
+동시성 보장은 아직이다. 락이 없어 마지막 한 잔을 두 손님이 같은 순간에 누르면 둘 다 성립할 수 있다. 그 순간을 잡는 것은 stock.quantity CHECK 제약뿐이다. 락은 Phase 2다.
 
 #### GET /api/order/{orderNumber}
 
@@ -347,6 +353,8 @@ status는 CONFIRMED, IN_PROGRESS, READY, COMPLETED, CANCELLED 다섯이다. FR-O
 점주가 주문 상태를 다음 단계로 전이시킨다. 목표는 점주 인증이다. 근거는 `OrderController.changeStatus`, `OrderDto.ChangeStatusRequest`.
 
 전이 규칙은 Order 엔티티가 소유한다. FR-ORD-04. 정상 흐름은 CONFIRMED, IN_PROGRESS, READY, COMPLETED다. FR-ORD-01. CONFIRMED와 IN_PROGRESS에서만 CANCELLED로 갈 수 있다. FR-ORD-02. 허용되지 않은 전이는 409로 거부되고 상태는 그대로다. FR-ORD-03.
+
+CANCELLED로 전이하면 그 주문이 깎았던 재고를 되돌린다. FR-ORD-09, FR-STK-05. 이미 취소된 주문을 다시 취소하면 전이 자체가 409로 거부되므로 재고가 두 번 늘어나지 않는다. 복구도 차감과 같은 menuId 오름차순으로 접근한다. 준비완료 이후에는 취소할 수 없으므로 다 만든 음료의 재고가 장부로 돌아오는 일도 없다.
 
 요청
 
@@ -450,8 +458,8 @@ BFF는 백엔드에 닿기 전에 필수 필드와 값 범위를 먼저 본다. 
 
 | 주제 | 목표 | 현재 | 단계 |
 | --- | --- | --- | --- |
-| 재고 차감 | 주문이 재고 차감, 부족하면 409 | 재고 미참조 | Phase 1 |
-| 재고 엔드포인트 | 조회와 조정 API | 없음 | Phase 1 |
+| 재고 엔드포인트 | 목록에 재고 포함, 조정 API | 없음 | Phase 1 |
+| 재고 행 생성 | 메뉴 등록이 재고 행을 함께 만듦 | 재고 행 없는 메뉴가 생김 | Phase 1 |
 | 동시성 | 마지막 한 잔 정확히 한 명 성공 | 락 없음 | Phase 2 |
 | 인증 | JWT와 httpOnly 쿠키, ROLE_OWNER 보호 | 없음, 본문 이메일 비교 | Phase 3 |
 | 인가 필드 | 서버 신원 기반, 본문에서 email 제거 | 메뉴 수정과 삭제 본문에 email | Phase 3 |
