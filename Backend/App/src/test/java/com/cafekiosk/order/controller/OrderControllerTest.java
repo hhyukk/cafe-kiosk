@@ -11,6 +11,8 @@ import com.cafekiosk.order.entity.Order;
 import com.cafekiosk.order.entity.OrderItem;
 import com.cafekiosk.order.entity.OrderStatus;
 import com.cafekiosk.order.repository.OrderItemRepository;
+import com.cafekiosk.stock.entity.Stock;
+import com.cafekiosk.stock.repository.StockRepository;
 import com.cafekiosk.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +57,9 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     private OrderItemRepository orderItemRepository;
 
     @Autowired
+    private StockRepository stockRepository;
+
+    @Autowired
     private OrderService orderService;
 
     private Menu menu1;
@@ -69,6 +74,11 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         menu1 = new Menu("아메리카노", "img1", 3000, "커피", "example@example.com");
         menu2 = new Menu("카페라떼", "img2", 4000, "커피", "example@example.com");
         menuRepository.saveAll(List.of(menu1, menu2));
+
+        // 주문이 재고를 깎기 시작한 뒤로, 재고 행 없는 메뉴는 주문할 수 없다.
+        // 이 파일은 재고를 검증하는 곳이 아니라 재고 때문에 걸리면 안 되는 곳이라
+        // 어떤 테스트도 닿지 못할 만큼 넉넉히 심는다. 재고 경계값은 OrderStockTest 가 본다.
+        stockRepository.saveAll(List.of(new Stock(menu1, 100), new Stock(menu2, 100)));
 
         // 주문 조회 테스트를 위한 기본 주문 하나 생성
         OrderDto.CreateRequest createRequest = new OrderDto.CreateRequest(

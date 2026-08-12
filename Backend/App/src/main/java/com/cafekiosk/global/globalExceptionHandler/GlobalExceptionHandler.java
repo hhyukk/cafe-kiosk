@@ -2,6 +2,7 @@ package com.cafekiosk.global.globalExceptionHandler;
 
 import com.cafekiosk.global.rsData.RsData;
 import com.cafekiosk.order.exception.InvalidOrderStatusTransitionException;
+import com.cafekiosk.stock.exception.OutOfStockException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -70,6 +71,20 @@ public class GlobalExceptionHandler {
     // 409 : CONFLICT. 현재 주문 상태와 충돌하는 전이 시도
     @ExceptionHandler(InvalidOrderStatusTransitionException.class)
     public ResponseEntity<RsData<Void>> handle(InvalidOrderStatusTransitionException ex) {
+        return new ResponseEntity<>(
+                new RsData<>(
+                        "409-1",
+                        ex.getMessage()
+                ),
+                CONFLICT
+        );
+    }
+
+    // 409 : CONFLICT. 남은 재고보다 많이 주문한 경우.
+    //       부족 판단은 Stock 엔티티가 하고 여기서는 HTTP 로 옮기기만 한다.
+    //       메시지에는 메뉴 이름이 아니라 menuId 가 담긴다. 이유는 OutOfStockException 주석에 있다.
+    @ExceptionHandler(OutOfStockException.class)
+    public ResponseEntity<RsData<Void>> handle(OutOfStockException ex) {
         return new ResponseEntity<>(
                 new RsData<>(
                         "409-1",
