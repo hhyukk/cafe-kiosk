@@ -116,12 +116,38 @@ public class OrderService {
             case IN_PROGRESS -> order.startPreparing();
             case READY -> order.markReady();
             case COMPLETED -> order.complete();
-            case CANCELLED -> order.cancel();
+            case CANCELLED -> {
+                // 전이를 먼저 통과시킨다. 이미 취소됐거나 준비완료 이후인 주문은 여기서
+                // 예외가 나므로 재고에 손대지 않는다. 같은 주문을 두 번 취소해 재고가
+                // 두 번 늘어나는 경로를 따로 막을 필요가 없다. Order 의 상태머신이 이미 막는다.
+                order.cancel();
+                restoreStock(order);
+            }
             default -> throw new IllegalArgumentException(
                     "직접 전이할 수 없는 상태입니다: " + next
             );
         }
         // 영속 상태 엔티티이므로 트랜잭션 커밋 시 변경 감지로 반영됨
+    }
+
+    /**
+     * 취소된 주문이 깎았던 재고를 되돌린다.
+     *
+     * 차감과 같은 menuId 오름차순으로 접근한다. 취소와 주문이 같은 재고 행을 반대 순서로
+     * 건드리면 락이 붙는 단계에서 그대로 데드락이 된다.
+     *
+     * getMenu().getId() 는 프록시의 식별자 접근이라 menu 행을 읽지 않는다.
+     * 되돌리는 수량은 주문 시점에 굳힌 count 이므로 그 사이 메뉴가 어떻게 바뀌었든 무관하다.
+     */
+    private void restoreStock(Order order) {
+        List<OrderItem> itemsInLockOrder = order.getOrderItems().stream()
+                .sorted(Comparator.comparingLong((OrderItem item) -> item.getMenu().getId()))
+                .toList();
+
+        for (OrderItem item : itemsInLockOrder) {
+            Stock stock = findStock(item.getMenu().getId());
+            stock.increase(item.getCount());
+        }
     }
 
     @Transactional(readOnly = true)
