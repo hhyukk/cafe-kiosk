@@ -10,6 +10,8 @@ import com.cafekiosk.order.entity.OrderStatus;
 import com.cafekiosk.order.repository.OrderRepository;
 import com.cafekiosk.order.entity.OrderItem;
 import com.cafekiosk.order.repository.OrderItemRepository;
+import com.cafekiosk.stock.entity.Stock;
+import com.cafekiosk.stock.repository.StockRepository;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +33,7 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final MenuRepository menuRepository;
     private final OrderItemRepository orderItemRepository;
+    private final StockRepository stockRepository;
 
     @Transactional
     public OrderDto.CreateResponse createOrder(OrderDto.CreateRequest request) {
@@ -44,13 +48,27 @@ public class OrderService {
         orderRepository.save(order);
         order.assignOrderNumber();
 
-        for (OrderDto.OrderItemRequest itemRequest : request.items()) {
+        // 재고에 닿는 순서를 menuId 오름차순으로 고정한다. 락이 없는 지금은 결과가
+        // 달라지지 않지만, 손님 A 가 1번과 3번을 손님 B 가 3번과 1번을 담으면 두 트랜잭션이
+        // 서로가 쥔 행을 기다리게 된다. 락을 붙이는 단계에 가서 심으려 하면 잊기 쉽고,
+        // 잊으면 데드락의 원인을 순회 순서가 아니라 락 구현에서 찾게 된다.
+        List<OrderDto.OrderItemRequest> itemsInLockOrder = request.items().stream()
+                .sorted(Comparator.comparing(OrderDto.OrderItemRequest::menuId))
+                .toList();
+
+        for (OrderDto.OrderItemRequest itemRequest : itemsInLockOrder) {
             // 판매 중단된 메뉴는 없는 메뉴와 같은 400 을 받는다. 손님 화면에는
             // 판매중 메뉴만 보이므로 이 경로는 화면이 오래된 목록을 들고 있을 때만 닿는다.
             Menu menu = menuRepository.findByIdAndDeletedAtIsNull(itemRequest.menuId())
                     .orElseThrow(() -> new IllegalArgumentException(
                             "존재하지 않는 메뉴입니다: " + itemRequest.menuId()
                     ));
+
+            // 부족 판단은 Stock 이 한다. 여기서 수량을 비교하지 않는다.
+            // 앞선 아이템이 이미 깎인 뒤에 부족이 드러나도 이 메서드의 트랜잭션이
+            // 통째로 롤백되므로 부분 차감이 남지 않는다. 보상 코드를 따로 두지 않는 이유다.
+            Stock stock = findStock(itemRequest.menuId());
+            stock.decrease(itemRequest.count());
 
             // 이름과 가격 스냅샷은 OrderItem 생성자가, 총액 합산은 Order 가 책임진다
             OrderItem orderItem = new OrderItem(order, menu, itemRequest.count());
@@ -63,6 +81,23 @@ public class OrderService {
                 order.getOrderNumber(),
                 order.getTotalPrice()
         );
+    }
+
+    /**
+     * 메뉴의 재고 행을 찾는다. 없으면 손님이 고칠 수 있는 요청 오류가 아니라 서버 데이터가
+     * 어긋난 상태이므로, 400 이나 409 로 흡수하지 않고 그대로 터뜨린다.
+     * docs/ERD.md 3-4 가 재고 없는 메뉴를 애초에 만들면 안 되는 상태로 규정했다.
+     *
+     * 지금은 메뉴 등록이 재고 행을 함께 만들지 않아서 POST /api/menu 로 새로 만든 메뉴가
+     * 실제로 이 경로에 닿는다. 그 메뉴는 주문할 수 없다. 메뉴 등록과 재고 행 생성을 한
+     * 트랜잭션으로 묶는 단계에서 원인이 사라지고, 그 뒤로 이 예외는 엔티티를 우회한 쓰기만
+     * 걸리는 방어선으로 남는다. dev 시드 메뉴는 BaseInitData 가 재고를 함께 심어 해당 없다.
+     */
+    private Stock findStock(Long menuId) {
+        return stockRepository.findByMenuId(menuId)
+                .orElseThrow(() -> new IllegalStateException(
+                        "재고 행이 없는 메뉴입니다: " + menuId
+                ));
     }
 
     /**
@@ -81,12 +116,38 @@ public class OrderService {
             case IN_PROGRESS -> order.startPreparing();
             case READY -> order.markReady();
             case COMPLETED -> order.complete();
-            case CANCELLED -> order.cancel();
+            case CANCELLED -> {
+                // 전이를 먼저 통과시킨다. 이미 취소됐거나 준비완료 이후인 주문은 여기서
+                // 예외가 나므로 재고에 손대지 않는다. 같은 주문을 두 번 취소해 재고가
+                // 두 번 늘어나는 경로를 따로 막을 필요가 없다. Order 의 상태머신이 이미 막는다.
+                order.cancel();
+                restoreStock(order);
+            }
             default -> throw new IllegalArgumentException(
                     "직접 전이할 수 없는 상태입니다: " + next
             );
         }
         // 영속 상태 엔티티이므로 트랜잭션 커밋 시 변경 감지로 반영됨
+    }
+
+    /**
+     * 취소된 주문이 깎았던 재고를 되돌린다.
+     *
+     * 차감과 같은 menuId 오름차순으로 접근한다. 취소와 주문이 같은 재고 행을 반대 순서로
+     * 건드리면 락이 붙는 단계에서 그대로 데드락이 된다.
+     *
+     * getMenu().getId() 는 프록시의 식별자 접근이라 menu 행을 읽지 않는다.
+     * 되돌리는 수량은 주문 시점에 굳힌 count 이므로 그 사이 메뉴가 어떻게 바뀌었든 무관하다.
+     */
+    private void restoreStock(Order order) {
+        List<OrderItem> itemsInLockOrder = order.getOrderItems().stream()
+                .sorted(Comparator.comparingLong((OrderItem item) -> item.getMenu().getId()))
+                .toList();
+
+        for (OrderItem item : itemsInLockOrder) {
+            Stock stock = findStock(item.getMenu().getId());
+            stock.increase(item.getCount());
+        }
     }
 
     @Transactional(readOnly = true)
