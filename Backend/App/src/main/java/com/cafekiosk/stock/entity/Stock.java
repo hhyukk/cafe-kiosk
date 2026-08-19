@@ -27,6 +27,9 @@ import static jakarta.persistence.FetchType.LAZY;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Stock extends BaseEntity {
 
+    /** 새로 등록한 메뉴가 갖는 재고 수량. */
+    private static final int INITIAL_QUANTITY = 0;
+
     // 재고는 메뉴와 1:1
     @OneToOne(fetch = LAZY)
     @JoinColumn(name = "menu_id", unique = true)
@@ -37,6 +40,20 @@ public class Stock extends BaseEntity {
     public Stock(Menu menu, int quantity) {
         this.menu = menu;
         this.quantity = quantity;
+    }
+
+    /**
+     * 새 메뉴의 재고 행을 만든다. 언제나 0 으로 시작한다.
+     *
+     * 등록 요청에서 수량을 받지 않는 이유는 점주가 등록 폼에 미리 적은 숫자가 실제 창고와
+     * 맞을 이유가 없기 때문이다. 메뉴를 만드는 일과 팔 수 있게 만드는 일은 다른 일이고,
+     * 뒤엣것은 재고 조정 하나가 맡는다. 그래서 새 메뉴는 품절로 태어난다.
+     *
+     * 0 을 MenuService 의 리터럴로 두지 않는 것은 그 숫자가 재고 도메인의 결정이라서다.
+     * 메뉴 패키지가 재고 정책을 들고 있으면 초기 수량이 바뀌는 날 고칠 자리를 재고 쪽에서 찾게 된다.
+     */
+    public static Stock initialFor(Menu menu) {
+        return new Stock(menu, INITIAL_QUANTITY);
     }
 
     /**

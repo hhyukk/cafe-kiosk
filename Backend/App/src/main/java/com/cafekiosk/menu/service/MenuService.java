@@ -6,6 +6,8 @@ import com.cafekiosk.menu.dto.DeleteMenuRequestDto;
 import com.cafekiosk.menu.dto.MenuDto;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
+import com.cafekiosk.stock.entity.Stock;
+import com.cafekiosk.stock.repository.StockRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,7 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class MenuService {
     private final MenuRepository menuRepository;
+    private final StockRepository stockRepository;
 
     // 조회 경로는 판매중 메뉴만 본다. 판매 중단된 메뉴는 손님 화면 목록에서도 빠지고
     // 점주의 수정 대상에서도 빠진다. 행이 남아 있다는 사실은 과거 주문만 알면 된다.
@@ -63,6 +66,14 @@ public class MenuService {
     public void createMenu(CreateMenuRequestDto req) {
         Menu menu = new Menu(req.getMenuName(),req.getImageURL(),req.getPrice(),req.getCategory(),req.getEmail());
         menuRepository.save(menu);
+
+        // 재고 행을 같은 트랜잭션에서 함께 만든다. docs/ERD.md 3-4 가 재고 없는 메뉴를
+        // 다루는 방법이 아니라 만들지 않는 방법을 규정했고, 여기가 그것을 지키는 자리다.
+        // ADR-0003 이 남겨 둔 500 경로를 이 두 줄이 닫는다.
+        //
+        // 메뉴 저장이 먼저여야 한다. PK 가 IDENTITY 라 INSERT 가 나가야 id 가 정해지고
+        // stock.menu_id 는 그 값을 참조한다. 초기 수량 0 은 Stock 이 소유한다.
+        stockRepository.save(Stock.initialFor(menu));
     }
 
     /**
