@@ -8,6 +8,7 @@ import com.cafekiosk.order.repository.OrderItemRepository;
 import com.cafekiosk.order.repository.OrderRepository;
 import com.cafekiosk.order.service.OrderService;
 import com.cafekiosk.stock.entity.Stock;
+import com.cafekiosk.stock.exception.StockNotFoundException;
 import com.cafekiosk.stock.repository.StockRepository;
 import com.cafekiosk.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
@@ -223,7 +224,10 @@ public class OrderStockTest extends AbstractIntegrationTest {
     void 재고행이_없는_메뉴는_주문할_수_없다() {
         // 재고 없는 메뉴는 팔 수 없는 메뉴다. docs/ERD.md 3-4 는 이 상태를 다루는 방법이
         // 아니라 만들지 않는 방법을 규정했으므로, 여기서 400 이나 409 로 흡수하지 않는다.
-        // 메뉴 등록이 재고 행을 함께 만들게 되면 이 경로 자체가 사라진다
+        //
+        // 메뉴 등록이 재고 행을 함께 만들게 된 뒤로 정상 흐름에서는 이 상태가 나오지 않는다.
+        // 여기서 리포지토리를 직접 부르는 것은 엔티티를 우회한 쓰기를 흉내 내기 위해서다.
+        // 그 경로는 앞으로도 남고, 그때도 흡수하지 않는다는 것이 ADR-0003 의 결정이다
         Menu 재고없는메뉴 = menuRepository.save(
                 new Menu("재고 행 없는 케이크", "tmpImgUrl", 5000, "디저트", "example@example.com"));
         만든메뉴.add(재고없는메뉴.getId());
@@ -234,9 +238,12 @@ public class OrderStockTest extends AbstractIntegrationTest {
         );
 
         // MockMvc 가 아니라 서비스를 직접 부른다. GlobalExceptionHandler 가 다루지 않는
-        // 예외는 상태 코드로 바뀌지 않고 perform 자리에서 그대로 튀어나온다
+        // 예외는 상태 코드로 바뀌지 않고 perform 자리에서 그대로 튀어나온다.
+        //
+        // 타입까지 단언하는 것은 예외가 리포지토리 프록시를 지나며 바뀌지 않았는지 보기 위한
+        // 것이다. 프록시의 예외 변환 인터셉터가 감싸면 도메인 판단이 인프라 예외로 뭉개진다
         assertThatThrownBy(() -> orderService.createOrder(request))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(StockNotFoundException.class)
                 .hasMessageContaining("재고 행이 없는 메뉴입니다");
     }
 

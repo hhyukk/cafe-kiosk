@@ -2,6 +2,8 @@ package com.cafekiosk.menu.controller;
 
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
+import com.cafekiosk.stock.entity.Stock;
+import com.cafekiosk.stock.repository.StockRepository;
 import com.cafekiosk.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -53,11 +55,18 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
     @Autowired
     private MenuRepository menuRepository;
 
+    @Autowired
+    private StockRepository stockRepository;
+
     private final List<Long> 만든메뉴 = new ArrayList<>();
 
     @AfterEach
     void cleanup() {
         for (Long menuId : 만든메뉴) {
+            // 외래키 안쪽부터 지운다. 메뉴 등록이 재고 행을 함께 만들게 되면
+            // 이 순서를 지키지 않는 순간 stock.menu_id 에 걸려 메뉴 삭제가 실패한다.
+            // 리포지토리로 직접 심은 메뉴는 재고 행이 없어 ifPresent 가 그냥 넘어간다.
+            stockRepository.findByMenuId(menuId).ifPresent(stockRepository::delete);
             menuRepository.findById(menuId).ifPresent(menuRepository::delete);
         }
         만든메뉴.clear();
@@ -100,6 +109,41 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
         assertThat(저장된메뉴).hasSize(1);
         assertThat(저장된메뉴.get(0).getMenuPrice()).isEqualTo(6500);
         만든메뉴.add(저장된메뉴.get(0).getId());
+    }
+
+    @Test
+    @DisplayName("메뉴 생성 - 재고 행이 같은 트랜잭션에서 함께 생기고 수량은 0 이다")
+    void 메뉴생성이_재고행도_함께_만든다() throws Exception {
+        mvc.perform(
+                        post("/api/menu")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "email": "example@example.com",
+                                            "category": "디저트",
+                                            "menuName": "재고 행 확인용 케이크",
+                                            "price": 6500,
+                                            "imageURL": "tmpImgURL"
+                                        }
+                                        """)
+                )
+                .andDo(print())
+                .andExpect(status().isCreated());
+
+        Menu 저장된메뉴 = menuRepository.findAll().stream()
+                .filter(menu -> menu.getMenuName().equals("재고 행 확인용 케이크"))
+                .findFirst()
+                .orElseThrow();
+        만든메뉴.add(저장된메뉴.getId());
+
+        // 201 응답은 재고 행까지 커밋됐는지 알려주지 않는다. 행을 직접 찾는다.
+        // 여기가 비면 재고 없는 메뉴가 다시 생기기 시작한 것이고, 그 메뉴는 주문하는 순간
+        // OrderStockTest 가 고정한 그 StockNotFoundException 을 맞는다.
+        Stock 재고 = stockRepository.findByMenuId(저장된메뉴.getId()).orElseThrow();
+        assertThat(재고.getQuantity()).isZero();
+
+        // 이 수량이 0 이라는 사실과 재고 0 이 목록에서 품절로 내려간다는 사실이 만나
+        // 새 메뉴는 품절로 태어난다가 성립한다. 뒤엣것은 MenuControllerTest 가 지킨다.
     }
 
     @Test
