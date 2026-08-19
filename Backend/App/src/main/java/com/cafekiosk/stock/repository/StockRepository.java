@@ -4,10 +4,23 @@ import com.cafekiosk.stock.entity.Stock;
 import com.cafekiosk.stock.exception.StockNotFoundException;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface StockRepository extends JpaRepository<Stock, Long> {
     Optional<Stock> findByMenuId(Long menuId);
+
+    /**
+     * 메뉴 여러 개의 재고를 한 번에 읽는다. 메뉴 목록에 남은 수량을 붙이는 데 쓴다.
+     *
+     * 메뉴마다 findByMenuId 를 부르면 목록 길이만큼 쿼리가 나간다. 이 메서드로 읽으면
+     * 메뉴가 몇 개든 쿼리는 한 방이고, 호출자가 menuId 로 맞춘다.
+     *
+     * 재고 행이 없는 메뉴는 결과에서 빠진다. 그 메뉴를 목록에서 지우는 것이 아니라
+     * 수량을 모른다고 내려주는 것이 계약이므로, 맞추는 쪽이 빈자리를 그대로 다뤄야 한다.
+     */
+    List<Stock> findAllByMenuIdIn(Collection<Long> menuIds);
 
     /**
      * 반드시 있어야 하는 재고 행을 가져온다. 없으면 예외다.

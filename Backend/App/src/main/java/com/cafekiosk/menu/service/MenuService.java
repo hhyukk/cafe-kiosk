@@ -14,7 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +29,35 @@ public class MenuService {
     // 점주의 수정 대상에서도 빠진다. 행이 남아 있다는 사실은 과거 주문만 알면 된다.
     public List<Menu> findAll(){
         return menuRepository.findAllByDeletedAtIsNull();
+    }
+
+    /**
+     * 판매중 메뉴를 남은 재고와 품절 여부까지 얹어 내려준다. FR-KSK-08.
+     *
+     * 조인을 쓰지 않는 이유는 docs/ERD.md 4절이다. menu 와 stock 은 재고 쪽에서만 참조하는
+     * 단방향이고, 메뉴가 자기 재고를 알 필요가 없다는 판단은 재고를 함께 내려주는 이 메서드가
+     * 생겨도 달라지지 않는다. 메뉴를 한 번 재고를 한 번 읽고 메모리에서 맞춘다.
+     * 메뉴가 몇 개든 쿼리는 두 방이고, 재고가 메뉴를 읽는 다른 경로에 따라 올라오지도 않는다.
+     *
+     * 조립이 이 트랜잭션 안에 있어야 한다. stock.getMenu() 는 바로 위에서 읽어 둔 Menu 를
+     * 영속성 컨텍스트에서 그대로 돌려주므로 추가 조회가 없는데, 이걸 컨트롤러로 옮기면
+     * 그 보장이 OSIV 에 얹힌다. OSIV 를 끄는 날 조용히 N+1 이 되거나 lazy 초기화가 터진다.
+     */
+    public List<MenuDto.MenuListResponse> findAllWithStock() {
+        List<Menu> menus = menuRepository.findAllByDeletedAtIsNull();
+        if (menus.isEmpty()) return List.of();
+
+        // 키 중복은 stock.menu_id 유니크가 막는다. toMap 의 기본 동작인 예외를 그대로 둔다.
+        // 유니크가 뚫린 날 재고가 둘로 갈라진 사실이 조용히 덮이는 쪽이 더 나쁘다.
+        Map<Long, Stock> stocks = stockRepository
+                .findAllByMenuIdIn(menus.stream().map(Menu::getId).toList())
+                .stream()
+                .collect(Collectors.toMap(stock -> stock.getMenu().getId(), stock -> stock));
+
+        // 재고 행이 없는 메뉴는 get 이 null 을 돌려주고, DTO 가 그것을 수량 모름과 품절로 옮긴다
+        return menus.stream()
+                .map(menu -> new MenuDto.MenuListResponse(menu, stocks.get(menu.getId())))
+                .toList();
     }
 
     public Optional<Menu> findById(Long id){
