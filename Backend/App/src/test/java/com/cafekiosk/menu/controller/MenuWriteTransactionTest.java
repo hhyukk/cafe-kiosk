@@ -2,6 +2,8 @@ package com.cafekiosk.menu.controller;
 
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
+import com.cafekiosk.stock.entity.Stock;
+import com.cafekiosk.stock.repository.StockRepository;
 import com.cafekiosk.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -53,11 +55,18 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
     @Autowired
     private MenuRepository menuRepository;
 
+    @Autowired
+    private StockRepository stockRepository;
+
     private final List<Long> 만든메뉴 = new ArrayList<>();
 
     @AfterEach
     void cleanup() {
         for (Long menuId : 만든메뉴) {
+            // 외래키 안쪽부터 지운다. 메뉴 등록이 재고 행을 함께 만들게 되면
+            // 이 순서를 지키지 않는 순간 stock.menu_id 에 걸려 메뉴 삭제가 실패한다.
+            // 리포지토리로 직접 심은 메뉴는 재고 행이 없어 ifPresent 가 그냥 넘어간다.
+            stockRepository.findByMenuId(menuId).ifPresent(stockRepository::delete);
             menuRepository.findById(menuId).ifPresent(menuRepository::delete);
         }
         만든메뉴.clear();
