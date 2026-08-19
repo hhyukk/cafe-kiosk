@@ -67,7 +67,10 @@ public class OrderService {
             // 부족 판단은 Stock 이 한다. 여기서 수량을 비교하지 않는다.
             // 앞선 아이템이 이미 깎인 뒤에 부족이 드러나도 이 메서드의 트랜잭션이
             // 통째로 롤백되므로 부분 차감이 남지 않는다. 보상 코드를 따로 두지 않는 이유다.
-            Stock stock = findStock(itemRequest.menuId());
+            //
+            // requireByMenuId 는 재고 행이 없으면 StockNotFoundException 을 던진다.
+            // 흡수하지 않고 터뜨리는 판단은 리포지토리가 소유한다. docs/ADR/ADR-0003 참고.
+            Stock stock = stockRepository.requireByMenuId(itemRequest.menuId());
             stock.decrease(itemRequest.count());
 
             // 이름과 가격 스냅샷은 OrderItem 생성자가, 총액 합산은 Order 가 책임진다
@@ -81,23 +84,6 @@ public class OrderService {
                 order.getOrderNumber(),
                 order.getTotalPrice()
         );
-    }
-
-    /**
-     * 메뉴의 재고 행을 찾는다. 없으면 손님이 고칠 수 있는 요청 오류가 아니라 서버 데이터가
-     * 어긋난 상태이므로, 400 이나 409 로 흡수하지 않고 그대로 터뜨린다.
-     * docs/ERD.md 3-4 가 재고 없는 메뉴를 애초에 만들면 안 되는 상태로 규정했다.
-     *
-     * 지금은 메뉴 등록이 재고 행을 함께 만들지 않아서 POST /api/menu 로 새로 만든 메뉴가
-     * 실제로 이 경로에 닿는다. 그 메뉴는 주문할 수 없다. 메뉴 등록과 재고 행 생성을 한
-     * 트랜잭션으로 묶는 단계에서 원인이 사라지고, 그 뒤로 이 예외는 엔티티를 우회한 쓰기만
-     * 걸리는 방어선으로 남는다. dev 시드 메뉴는 BaseInitData 가 재고를 함께 심어 해당 없다.
-     */
-    private Stock findStock(Long menuId) {
-        return stockRepository.findByMenuId(menuId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "재고 행이 없는 메뉴입니다: " + menuId
-                ));
     }
 
     /**
@@ -145,7 +131,7 @@ public class OrderService {
                 .toList();
 
         for (OrderItem item : itemsInLockOrder) {
-            Stock stock = findStock(item.getMenu().getId());
+            Stock stock = stockRepository.requireByMenuId(item.getMenu().getId());
             stock.increase(item.getCount());
         }
     }
