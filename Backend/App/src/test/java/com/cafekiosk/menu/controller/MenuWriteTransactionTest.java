@@ -112,6 +112,41 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("메뉴 생성 - 재고 행이 같은 트랜잭션에서 함께 생기고 수량은 0 이다")
+    void 메뉴생성이_재고행도_함께_만든다() throws Exception {
+        mvc.perform(
+                        post("/api/menu")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "email": "example@example.com",
+                                            "category": "디저트",
+                                            "menuName": "재고 행 확인용 케이크",
+                                            "price": 6500,
+                                            "imageURL": "tmpImgURL"
+                                        }
+                                        """)
+                )
+                .andDo(print())
+                .andExpect(status().isCreated());
+
+        Menu 저장된메뉴 = menuRepository.findAll().stream()
+                .filter(menu -> menu.getMenuName().equals("재고 행 확인용 케이크"))
+                .findFirst()
+                .orElseThrow();
+        만든메뉴.add(저장된메뉴.getId());
+
+        // 201 응답은 재고 행까지 커밋됐는지 알려주지 않는다. 행을 직접 찾는다.
+        // 여기가 비면 재고 없는 메뉴가 다시 생기기 시작한 것이고, 그 메뉴는 주문하는 순간
+        // OrderStockTest 가 고정한 그 StockNotFoundException 을 맞는다.
+        Stock 재고 = stockRepository.findByMenuId(저장된메뉴.getId()).orElseThrow();
+        assertThat(재고.getQuantity()).isZero();
+
+        // 이 수량이 0 이라는 사실과 재고 0 이 목록에서 품절로 내려간다는 사실이 만나
+        // 새 메뉴는 품절로 태어난다가 성립한다. 뒤엣것은 MenuControllerTest 가 지킨다.
+    }
+
+    @Test
     @DisplayName("메뉴 삭제 - 등록자 이메일이 일치하면 200 이고 행은 남되 판매가 중단된다")
     void 메뉴삭제가_DB에_반영된다() throws Exception {
         Menu menu = 메뉴를_심는다("판매 중단 확인용 케이크", "example@example.com");
