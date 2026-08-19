@@ -8,6 +8,9 @@
    category?: string;
    price: number;
    img_url?: string;
+   // 재고 행이 없는 메뉴는 수량을 모른다. null 과 0 을 구분해야 화면이 대시를 찍을 수 있다
+   stock: number | null;
+   soldOut: boolean;
  };
 
  type MenuItem = {
@@ -16,6 +19,8 @@
    menu_name: string;
    price: number;
    img_url: string;
+   stock: number | null;
+   sold_out: boolean;
  };
 
 type OrderHistory = {
@@ -99,6 +104,9 @@ export default function Home() {
         category: item.category,
         price: item.price,
         img_url: item.img_url,
+        // 명시적 화이트리스트다. 백엔드가 필드를 늘려도 여기 적지 않으면 화면까지 오지 않는다
+        stock: item.stock ?? null,
+        soldOut: item.sold_out,
       }));
 
       setProducts(convertedProducts);
@@ -115,7 +123,28 @@ export default function Home() {
     loadProducts();
   }, []);
 
-  const addToCart = (id: string) => {
+  const addToCart = (product: Product) => {
+    // 두 검사를 setCart 업데이터 밖에 두는 이유는 StrictMode 가 개발 모드에서 업데이터를
+    // 두 번 실행하기 때문이다. 안에서 alert 을 부르면 경고가 두 번 뜬다.
+    // 아래 100 개 상한 검사가 이미 그러고 있는데 그 문제를 새 검사로 늘리지 않는다.
+
+    // 품절 메뉴는 담기지 않는다. FR-KSK-08.
+    // 버튼도 비활성이지만 목록을 받아 온 뒤 다른 손님이 마지막 잔을 가져가면 화면이 낡은
+    // 상태로 남는다. 그때는 백엔드가 409 로 최종 판단한다
+    if (product.soldOut) {
+      alert("품절된 상품입니다.");
+      return;
+    }
+
+    // 남은 재고보다 많이 담는 것을 담는 자리에서 막는다. 결제를 누른 뒤에야 409 를 보는
+    // 흐름을 없애기 위한 것이다. stock 이 null 인 것은 재고 행이 없다는 뜻인데
+    // 그건 이미 품절이라 여기까지 닿지 않는다
+    const nextCount = (cart[product.id] ?? 0) + 1;
+    if (product.stock !== null && nextCount > product.stock) {
+      alert(`남은 재고는 ${product.stock}개입니다.`);
+      return;
+    }
+
     setCart((prev) => {
       const currentTotal = Object.values(prev).reduce(
           (acc, curr) => acc + curr,
@@ -127,7 +156,7 @@ export default function Home() {
         return prev;
       }
 
-      return { ...prev, [id]: (prev[id] ?? 0) + 1 };
+      return { ...prev, [product.id]: (prev[product.id] ?? 0) + 1 };
     });
   };
 
@@ -194,9 +223,21 @@ export default function Home() {
         alert(`주문이 완료되었습니다.\n대기번호 ${data.orderNumber}번`);
         setCart({});
         setOrderForm({ email: "" });
+
+        // 방금 주문이 재고를 깎았다. 목록의 수량과 품절 표시가 낡았으므로 다시 읽는다
+        setLoading(true);
+        await loadProducts();
       } else {
         const error = await response.json();
         alert(error.message || "주문 처리 중 오류가 발생했습니다.");
+
+        // 409 는 재고 부족이다. 담을 때는 있었는데 결제 순간 없어졌다는 뜻이므로
+        // 화면이 들고 있던 목록이 실제와 다르다. 알림만 띄우고 두면 재고가 남아 있다고 말하는
+        // 화면이 그대로 남는다
+        if (response.status === 409) {
+          setLoading(true);
+          await loadProducts();
+        }
       }
     } catch (err) {
       console.error(err);
@@ -454,19 +495,27 @@ export default function Home() {
                   <th className="w-[120px] px-4 py-3 text-center">사진</th>
                   <th className="px-4 py-3">상품명</th>
                   <th className="w-28 px-4 py-3 text-right">가격</th>
+                  <th className="w-24 px-4 py-3 text-right">재고</th>
                   <th className="w-40 px-4 py-3 text-center">Action</th>
                 </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                 {loading ? (
                     <tr>
-                      <td className="px-4 py-6 text-center" colSpan={4}>
+                      <td className="px-4 py-6 text-center" colSpan={5}>
                         상품을 불러오는 중입니다...
                       </td>
                     </tr>
                 ) : (
                     products.map((product) => (
-                        <tr key={product.id} className="hover:bg-slate-50/80">
+                        <tr
+                            key={product.id}
+                            className={
+                              product.soldOut
+                                  ? "bg-slate-50 text-slate-400"
+                                  : "hover:bg-slate-50/80"
+                            }
+                        >
                           <td className="px-4 py-3">
                             <div className="relative mx-auto flex h-16 w-16 items-center justify-center">
                               {product.img_url ? (
@@ -513,6 +562,11 @@ export default function Home() {
                           <td className="px-4 py-3 align-top">
                             <div className="text-sm font-semibold text-slate-800">
                               {product.name}
+                              {product.soldOut && (
+                                  <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                                    품절
+                                  </span>
+                              )}
                             </div>
                             {product.category && (
                                 <div className="text-xs text-slate-500">
@@ -523,11 +577,21 @@ export default function Home() {
                           <td className="px-4 py-3 text-right font-semibold text-slate-800">
                             {formatPrice(product.price)}
                           </td>
+                          {/* 재고 행이 없으면 0 이 아니라 대시다. 서버가 없는 것과 0 개인 것을
+                              구분해 내려주는데 화면이 0 으로 뭉개면 그렇게 내려준 이유가 없어진다 */}
+                          <td
+                              className={`px-4 py-3 text-right font-semibold ${
+                                  product.soldOut ? "text-rose-600" : "text-slate-800"
+                              }`}
+                          >
+                            {product.stock === null ? "-" : `${product.stock}개`}
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-center gap-2 whitespace-nowrap">
                               <button
-                                  className="rounded-md border border-emerald-600 px-3 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-600 hover:text-white whitespace-nowrap"
-                                  onClick={() => addToCart(product.id)}
+                                  className="rounded-md border border-emerald-600 px-3 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-600 hover:text-white whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
+                                  onClick={() => addToCart(product)}
+                                  disabled={product.soldOut}
                               >
                                 추가
                               </button>
@@ -561,7 +625,7 @@ export default function Home() {
                 )}
                 {!loading && products.length === 0 && (
                     <tr>
-                      <td className="px-4 py-6 text-center text-slate-500" colSpan={4}>
+                      <td className="px-4 py-6 text-center text-slate-500" colSpan={5}>
                         표시할 상품이 없습니다.
                       </td>
                     </tr>
