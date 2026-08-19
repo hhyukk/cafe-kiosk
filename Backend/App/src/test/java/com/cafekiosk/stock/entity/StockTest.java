@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 재고 증감 단위 테스트.
+ * 재고 증감과 조정 단위 테스트.
  * Spring 컨텍스트 없이 순수 POJO 로 경계값만 검증한다.
  */
 class StockTest {
@@ -125,5 +125,60 @@ class StockTest {
         stock.increase(3);
 
         assertThat(stock.getQuantity()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("재고를 새 수량으로 조정하면 그 값이 된다")
+    void should_조정하면_그_수량이_된다() {
+        Stock stock = newStock(3);
+
+        stock.adjustTo(50);
+
+        assertThat(stock.getQuantity()).isEqualTo(50);
+    }
+
+    @Test
+    @DisplayName("지금보다 적은 수량으로도 조정할 수 있다")
+    void should_줄이는_방향으로도_조정된다() {
+        Stock stock = newStock(3);
+
+        stock.adjustTo(1);
+
+        assertThat(stock.getQuantity()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("재고를 0 으로 조정해 품절로 만들 수 있다")
+    void should_0으로_조정할_수_있다() {
+        Stock stock = newStock(3);
+
+        // 조정은 증감이 아니다. 0 개를 깎는 호출과 달리 0 으로 맞추는 것은 정상적인 운영 행위다.
+        // adjustTo 가 requirePositive 를 재사용하면 여기서 예외가 나고 품절 처리 경로가 통째로 막힌다
+        stock.adjustTo(0);
+
+        assertThat(stock.getQuantity()).isZero();
+    }
+
+    @Test
+    @DisplayName("음수로 조정하려 하면 예외가 나고 수량은 그대로다")
+    void should_음수로_조정하면_예외이고_수량은_그대로다() {
+        Stock stock = newStock(3);
+
+        assertThatThrownBy(() -> stock.adjustTo(-1))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(stock.getQuantity()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("재고가 0 이면 품절이다")
+    void should_수량이_0이면_품절이다() {
+        assertThat(newStock(0).isSoldOut()).isTrue();
+    }
+
+    @Test
+    @DisplayName("재고가 1 개라도 남아 있으면 품절이 아니다")
+    void should_수량이_남아있으면_품절이_아니다() {
+        assertThat(newStock(1).isSoldOut()).isFalse();
     }
 }
