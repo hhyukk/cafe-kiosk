@@ -51,7 +51,10 @@ API 문서는 http://localhost:8080/swagger-ui.html 이다. Redis 컨테이너�
 - **총액은 `Order.addOrderItem`으로만 늘어난다.** 서비스가 `totalPrice += price * count`를 계산하지 않는다. 총액이 아이템과 어긋날 수 있는 경로 자체를 없애는 것이 목적이다.
 - **가격 스냅샷은 `OrderItem` 생성자가 메뉴에서 직접 복사한다.** 호출자가 넘겨주게 두면 언젠가 스냅샷을 빠뜨리는 경로가 생긴다.
 - **대기번호는 `Order.assignOrderNumber`가 PK에서 파생한다.** INSERT 이후에 부른다. 오늘 주문 수에 1을 더하는 방식으로 바꾸지 않는다. 조회와 삽입 사이에 번호가 겹치는데, 동시성은 재고에서 의도적으로 다룰 주제이지 대기번호에서 실수로 만들 문제가 아니다.
-- **재고 증감은 `Stock`이 소유한다.** `decrease`와 `increase`다. 재고 부족은 엔티티가 스스로 판단해 `OutOfStockException`을 던지고 수량을 건드리지 않는다. 서비스가 `if (stock.getQuantity() < count)`를 검사하는 형태로 짜지 않는다. 락을 세 번 갈아 끼우는 동안 이 메서드가 그대로여야 전략 사이의 차이를 락 때문이라고 말할 수 있다.
+- **재고 규칙은 `Stock`이 소유한다.** 증감은 `decrease`와 `increase`, 절대값 조정은 `adjustTo`, 품절 판정은 `isSoldOut`이다. 재고 부족은 엔티티가 스스로 판단해 `OutOfStockException`을 던지고 수량을 건드리지 않는다. 서비스가 `if (stock.getQuantity() < count)`를 검사하거나 화면이 `stock === 0`을 계산하는 형태로 짜지 않는다. 락을 세 번 갈아 끼우는 동안 `decrease`가 그대로여야 전략 사이의 차이를 락 때문이라고 말할 수 있다.
+- **`adjustTo`는 `requirePositive`를 재사용하지 않는다.** 증감의 0 금지는 0개를 깎거나 채우는 호출이 무의미하다는 규칙이고, 조정의 0 허용은 재고가 0이 될 수 있다는 규칙이다. 같은 숫자를 두고 정반대를 말하므로 검증을 따로 둔다. 합치면 점주의 품절 처리가 통째로 400이 된다.
+- **재고 행이 없으면 만들어 주지 않고 터뜨린다.** 판정 자리는 `StockRepository.requireByMenuId` 하나다. 주문 차감, 취소 복구, 점주 조정 셋이 같은 물음을 갖는데 각자 `orElseThrow`를 쓰면 나중에 한쪽만 다른 예외로 바뀐다. `GlobalExceptionHandler`에 `StockNotFoundException` 매핑을 넣지 않는 것도 결정이다. `docs/ADR/ADR-0003` 참고.
+- **리포지토리 안에서 `IllegalStateException`이나 `IllegalArgumentException`을 던지지 않는다.** Spring Data 프록시의 예외 변환 인터셉터가 그 둘을 `InvalidDataAccessApiUsageException`으로 감싼다. JPA 명세가 프로바이더도 그 둘을 던질 수 있다고 규정했기 때문이다. 도메인 예외가 인프라 예외로 바뀌고, 감싸인 뒤에는 서로 다른 두 사건이 한 타입이 된다. `default` 메서드도 이 체인을 지난다. `StockNotFoundException` 주석에 자세히 있다.
 - **재고에 닿는 순서는 `menuId` 오름차순이다.** 차감도 복구도 그렇다. 락이 없는 지금은 결과가 달라지지 않지만, 두 손님이 같은 두 메뉴를 반대 순서로 담았을 때 서로가 쥔 행을 기다리는 상황을 막는 자리다. 재고를 건드리는 경로를 새로 만들면 같은 순서를 따른다.
 - **부분 차감을 보상 코드로 되돌리지 않는다.** 앞선 아이템이 깎인 뒤 부족이 드러나도 `OrderService.createOrder`의 트랜잭션이 통째로 롤백한다. 직접 되돌리는 코드를 넣으면 롤백과 이중으로 겹친다.
 
@@ -63,7 +66,7 @@ API 문서는 http://localhost:8080/swagger-ui.html 이다. Redis 컨테이너�
 com.cafekiosk
 ├── menu/     controller, service, repository, entity, dto
 ├── order/    controller, service, repository, entity, dto, exception
-├── stock/    entity, repository
+├── stock/    controller, service, repository, entity, dto, exception
 ├── file/     controller
 └── global/   config, globalExceptionHandler, initData, jpa, rsData, springDoc
 ```
@@ -84,11 +87,11 @@ com.cafekiosk
 - JUnit 5와 AssertJ. `@DisplayName`은 한국어 문장, 메서드명은 `should_정상흐름_전이는_성공한다` 스타일.
 - `./gradlew test`에는 Docker 데몬이 떠 있어야 한다.
 
-회귀 방지선이 넷 있다. `OrderControllerTest`의 가격 스냅샷 테스트는 조회 경로가 `orderItem.getOrderPrice` 대신 `getMenu().getMenuPrice`를 읽는 순간 잡아낸다. `FileUploadControllerTest`는 업로드 응답 URL에 호스트가 붙는 순간 잡아낸다. `MenuWriteTransactionTest`는 메뉴 생성과 삭제가 readOnly 트랜잭션에 갇혀 SQL이 조용히 사라지는 순간 잡아낸다. `OrderStockTest`는 재고 부족 주문이 부분 차감을 남기는 순간 잡아낸다.
+회귀 방지선이 다섯 있다. `OrderControllerTest`의 가격 스냅샷 테스트는 조회 경로가 `orderItem.getOrderPrice` 대신 `getMenu().getMenuPrice`를 읽는 순간 잡아낸다. `FileUploadControllerTest`는 업로드 응답 URL에 호스트가 붙는 순간 잡아낸다. `MenuWriteTransactionTest`는 메뉴 생성과 삭제가 readOnly 트랜잭션에 갇혀 SQL이 조용히 사라지는 순간, 그리고 메뉴 등록이 재고 행을 함께 만들지 않게 되는 순간 잡아낸다. `OrderStockTest`는 재고 부족 주문이 부분 차감을 남기는 순간 잡아낸다. `StockControllerTest`는 재고 조정이 준영속 엔티티 위에서 사라져 200만 나가는 순간 잡아낸다.
 
 **검증 대상이 트랜잭션 경계이면 테스트에 `@Transactional`을 붙이지 않는다.** 붙이는 순간 테스트가 read-write 트랜잭션을 먼저 열어, 서비스의 `readOnly = true`가 거기 참여만 하고 속성이 무시된다. 잡으려던 결함이 통째로 가려진다. `MenuWriteTransactionTest`가 `@Transactional` 없이 서서 만든 행을 `@AfterEach`로 직접 지우는 이유가 이것이다.
 
-`OrderStockTest`도 같은 이유로 트랜잭션 밖에 선다. 잡는 결함은 다르다. 롤백이 재고 차감을 되돌리는지를 보는 테스트인데, 테스트가 트랜잭션을 먼저 열면 깎인 `Stock`이 같은 영속성 컨텍스트에 남아 재조회가 DB 대신 그 인스턴스를 돌려준다. 정상 롤백되는 코드인데 테스트만 빨개진다. `em.clear()`로도 안 된다. 더티 체킹이 만든 UPDATE가 같은 트랜잭션 안에서 이미 flush 됐기 때문이다. 트랜잭션 밖에 서는 테스트는 만든 행을 반드시 지운다. 남기면 `OrderControllerTest`가 전체 주문 목록 길이를 세는 자리에서 깨진다. 두 클래스가 같은 Spring 컨텍스트를 공유해 같은 DB를 본다.
+`OrderStockTest`와 `StockControllerTest`도 같은 이유로 트랜잭션 밖에 선다. 잡는 결함은 다르다. 롤백이 재고 차감을 되돌리는지를 보는 테스트인데, 테스트가 트랜잭션을 먼저 열면 깎인 `Stock`이 같은 영속성 컨텍스트에 남아 재조회가 DB 대신 그 인스턴스를 돌려준다. 정상 롤백되는 코드인데 테스트만 빨개진다. `em.clear()`로도 안 된다. 더티 체킹이 만든 UPDATE가 같은 트랜잭션 안에서 이미 flush 됐기 때문이다. 트랜잭션 밖에 서는 테스트는 만든 행을 반드시 지운다. 남기면 `OrderControllerTest`가 전체 주문 목록 길이를 세는 자리에서 깨진다. 두 클래스가 같은 Spring 컨텍스트를 공유해 같은 DB를 본다.
 
 앞으로 쓸 동시성 테스트에도 같은 이유로 `@Transactional`을 붙이지 않는다. `ExecutorService`로 서비스를 직접 부른다. 테스트가 트랜잭션 안에서 돌면 동시성이 사라진다. 베이스가 `@AutoConfigureMockMvc`를 갖지 않는 이유가 이것이다.
 
@@ -113,7 +116,6 @@ Next 16이라 라우트 핸들러의 `params`는 `Promise`다. `context: { param
 | 함정 | 위치 |
 | --- | --- |
 | dev 프로필은 재기동마다 스키마를 드롭하고 시드를 다시 심는다. `ddl-auto: create` | `application.yml` |
-| 메뉴 등록이 재고 행을 함께 만들지 않는다. 새로 등록한 메뉴는 주문하면 500이다. 시드 메뉴는 재고를 함께 심어 해당 없다 | `menu/service/MenuService.java` |
 | 인가가 요청 본문 이메일 문자열 비교뿐이다. 이메일만 알면 남의 메뉴를 고칠 수 있다 | `menu/service/MenuService.java` |
 | 응답 봉투가 섞여 있다. 맨 배열, 평문 문자열, Map, 봉투 없는 DTO. 새 코드는 `RsData`로 통일한다 | `MenuController`, `FileUploadController` |
 | CORS 허용 메서드에 PATCH가 없다. 브라우저가 상태 변경을 직접 부르면 막힌다 | `global/config/WebConfig.java` |
