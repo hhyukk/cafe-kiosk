@@ -35,6 +35,14 @@ spring:
 file:
   upload-dir: ./uploads
 
+cafekiosk:
+  stock:
+    # 재고 차감과 복구가 어느 락으로 도는지 고른다. 값을 지우면 pessimistic 이다.
+    # 세 전략을 같은 동시성 테스트에 걸어 성공 건수와 재시도 횟수로 비교하려고 둔 스위치다.
+    # 지금 있는 값은 pessimistic 하나뿐이고 optimistic 과 distributed 는 뒤에 붙는다.
+    # 없는 값을 적으면 StockLockStrategy 빈이 안 떠서 컨텍스트가 시작하지 못한다.
+    lock-strategy: pessimistic
+
 # server.base-url 은 제거했다 (FR-FILE-07).
 # 업로드 응답에 호스트를 붙이는 용도로만 쓰였는데, 그 값이 Menu.imgUrl 로 DB 에 저장돼
 # 배포 환경 주소가 데이터에 박히는 원인이었다. 이제 상대경로를 내려주므로 필요 없다.
