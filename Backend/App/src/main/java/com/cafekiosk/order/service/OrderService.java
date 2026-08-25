@@ -11,7 +11,7 @@ import com.cafekiosk.order.repository.OrderRepository;
 import com.cafekiosk.order.entity.OrderItem;
 import com.cafekiosk.order.repository.OrderItemRepository;
 import com.cafekiosk.stock.entity.Stock;
-import com.cafekiosk.stock.repository.StockRepository;
+import com.cafekiosk.stock.lock.StockLockStrategy;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,7 +33,10 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final MenuRepository menuRepository;
     private final OrderItemRepository orderItemRepository;
-    private final StockRepository stockRepository;
+
+    // 재고 행을 어떻게 확보할지는 이 서비스가 정하지 않는다. 락을 갈아 끼워도
+    // 이 파일은 그대로다. 지금 주입되는 것은 비관적 락 구현이다.
+    private final StockLockStrategy stockLockStrategy;
 
     @Transactional
     public OrderDto.CreateResponse createOrder(OrderDto.CreateRequest request) {
@@ -48,10 +51,10 @@ public class OrderService {
         orderRepository.save(order);
         order.assignOrderNumber();
 
-        // 재고에 닿는 순서를 menuId 오름차순으로 고정한다. 락이 없는 지금은 결과가
-        // 달라지지 않지만, 손님 A 가 1번과 3번을 손님 B 가 3번과 1번을 담으면 두 트랜잭션이
-        // 서로가 쥔 행을 기다리게 된다. 락을 붙이는 단계에 가서 심으려 하면 잊기 쉽고,
-        // 잊으면 데드락의 원인을 순회 순서가 아니라 락 구현에서 찾게 된다.
+        // 재고에 닿는 순서를 menuId 오름차순으로 고정한다. 손님 A 가 1번과 3번을
+        // 손님 B 가 3번과 1번을 담으면 두 트랜잭션이 서로가 쥔 행을 기다리게 된다.
+        // 락이 붙기 전에 미리 심어 둔 정렬이고, 이제부터 실제로 그 일을 한다. NFR-CON-04.
+        // 취소가 재고를 되돌리는 restoreStock 도 같은 순서를 따른다.
         List<OrderDto.OrderItemRequest> itemsInLockOrder = request.items().stream()
                 .sorted(Comparator.comparing(OrderDto.OrderItemRequest::menuId))
                 .toList();
@@ -68,9 +71,13 @@ public class OrderService {
             // 앞선 아이템이 이미 깎인 뒤에 부족이 드러나도 이 메서드의 트랜잭션이
             // 통째로 롤백되므로 부분 차감이 남지 않는다. 보상 코드를 따로 두지 않는 이유다.
             //
-            // requireByMenuId 는 재고 행이 없으면 StockNotFoundException 을 던진다.
+            // acquire 는 재고 행이 없으면 StockNotFoundException 을 던진다.
             // 흡수하지 않고 터뜨리는 판단은 리포지토리가 소유한다. docs/ADR/ADR-0003 참고.
-            Stock stock = stockRepository.requireByMenuId(itemRequest.menuId());
+            //
+            // 확보한다는 말이 무슨 일인지는 전략이 정한다. 비관적 락이면 여기서
+            // 다른 손님을 멈춰 세운 채로 읽는다. 이 줄이 잠그지 않고 읽던 시절에는
+            // 열 손님이 전부 남은 수량 3 을 읽고 각자 2 를 계산해 통째로 덮어썼다.
+            Stock stock = stockLockStrategy.acquire(itemRequest.menuId());
             stock.decrease(itemRequest.count());
 
             // 이름과 가격 스냅샷은 OrderItem 생성자가, 총액 합산은 Order 가 책임진다
@@ -120,7 +127,11 @@ public class OrderService {
      * 취소된 주문이 깎았던 재고를 되돌린다.
      *
      * 차감과 같은 menuId 오름차순으로 접근한다. 취소와 주문이 같은 재고 행을 반대 순서로
-     * 건드리면 락이 붙는 단계에서 그대로 데드락이 된다.
+     * 건드리면 서로가 쥔 행을 기다려 데드락이 된다. 락이 붙은 지금부터 실제로 그렇다.
+     *
+     * 복구도 차감과 같은 전략으로 행을 확보한다. 한쪽만 잠그면 취소 두 건이 같은 메뉴에
+     * 겹칠 때 되돌린 수량이 서로를 덮어써 재고가 덜 돌아온다. 잠긴 읽기와 안 잠긴 읽기가
+     * 한 행에 섞이면 락이 가끔만 듣는 것처럼 보이는데, 원인을 찾기 가장 나쁜 모양이다.
      *
      * getMenu().getId() 는 프록시의 식별자 접근이라 menu 행을 읽지 않는다.
      * 되돌리는 수량은 주문 시점에 굳힌 count 이므로 그 사이 메뉴가 어떻게 바뀌었든 무관하다.
@@ -131,7 +142,7 @@ public class OrderService {
                 .toList();
 
         for (OrderItem item : itemsInLockOrder) {
-            Stock stock = stockRepository.requireByMenuId(item.getMenu().getId());
+            Stock stock = stockLockStrategy.acquire(item.getMenu().getId());
             stock.increase(item.getCount());
         }
     }
