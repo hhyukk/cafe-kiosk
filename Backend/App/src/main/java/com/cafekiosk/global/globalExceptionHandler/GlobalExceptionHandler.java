@@ -4,6 +4,7 @@ import com.cafekiosk.global.rsData.RsData;
 import com.cafekiosk.order.exception.InvalidOrderStatusTransitionException;
 import com.cafekiosk.stock.exception.OutOfStockException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -89,6 +90,26 @@ public class GlobalExceptionHandler {
                 new RsData<>(
                         "409-1",
                         ex.getMessage()
+                ),
+                CONFLICT
+        );
+    }
+
+    // 409 : CONFLICT. 낙관적 락 재시도를 다 쓰고도 버전 충돌을 못 벗어난 경우.
+    //       OrderFacade 가 상한까지 다시 시도한 뒤에야 여기 닿으므로, 이 응답이 나갔다면
+    //       손님이 잠깐 다시 누르면 되는 상황이 아니라 그 재고 행에 뭔가 이상이 있는 것이다.
+    //
+    //       상태 전이 충돌이나 재고 부족과 같은 409-1 계열로 묶는다. 셋 다 요청이 잘못된 것이
+    //       아니라 지금 자원 상태와 부딪힌 것이고, 손님이 할 수 있는 일도 다시 시도하는 것 하나다.
+    //
+    //       예외 메시지를 그대로 쓰지 않는다. Hibernate 가 넣는 문장에 엔티티 클래스명과
+    //       식별자가 담겨 있어 손님 화면에 나갈 물건이 아니다. 원문은 스택 트레이스에 남는다.
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<RsData<Void>> handle(OptimisticLockingFailureException ex) {
+        return new ResponseEntity<>(
+                new RsData<>(
+                        "409-1",
+                        "주문이 몰려 처리하지 못했습니다. 잠시 후 다시 시도해 주세요."
                 ),
                 CONFLICT
         );
