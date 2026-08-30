@@ -39,7 +39,10 @@ cafekiosk:
   stock:
     # 재고 차감과 복구가 어느 락으로 도는지 고른다. 값을 지우면 pessimistic 이다.
     # 세 전략을 같은 동시성 테스트에 걸어 성공 건수와 재시도 횟수로 비교하려고 둔 스위치다.
-    # 지금 있는 값은 pessimistic 하나뿐이고 optimistic 과 distributed 는 뒤에 붙는다.
+    # 지금 있는 값은 pessimistic 과 optimistic 둘이고 distributed 는 뒤에 붙는다.
+    # optimistic 은 이 스위치만으로 완성되지 않는다. 잠그지 않고 읽는 대신 커밋 시점에
+    # 버전이 충돌을 알리므로, 롤백된 시도를 새 트랜잭션에서 다시 태우는 OrderFacade 가
+    # 짝으로 있어야 한다. 그쪽이 없으면 열 손님 중 한 명만 성공하고 재고가 남는다.
     # 없는 값을 적으면 StockLockStrategy 빈이 안 떠서 컨텍스트가 시작하지 못한다.
     lock-strategy: pessimistic
 
