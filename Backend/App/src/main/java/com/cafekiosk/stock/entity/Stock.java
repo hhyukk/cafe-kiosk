@@ -37,6 +37,35 @@ public class Stock extends BaseEntity {
 
     private int quantity; // 현재 재고 수량
 
+    /**
+     * 낙관적 락이 읽는 버전이다. 이 필드 하나로 UPDATE 에 where version = ? 가 붙고,
+     * 영향받은 행이 0 이면 Hibernate 가 커밋 시점에 충돌을 알린다.
+     *
+     * ── BaseEntity 가 아니라 여기에 붙인 이유 ─────────────────────────────────────
+     *
+     * 베이스에 두면 Menu 와 Order 와 OrderItem 과 Customer 가 전부 버전을 갖는다.
+     * 이 프로젝트가 재려는 것은 재고 한 행을 놓고 벌어지는 경쟁인데, 거기에 주문 엔티티의
+     * 버전 충돌이 섞이면 세 전략을 비교한 수치가 무엇을 잰 것인지 말할 수 없게 된다.
+     * 낙관적 락이 필요한 행은 지금 이 행 하나뿐이다.
+     *
+     * ── 전략과 무관하게 언제나 켜져 있다 ─────────────────────────────────────────
+     *
+     * cafekiosk.stock.lock-strategy 가 pessimistic 이어도 이 컬럼은 살아 있고 UPDATE 에
+     * 버전 조건이 붙는다. 그런데도 충돌하지 않는 것은 비관적 락이 행을 잠가 트랜잭션을
+     * 줄 세우기 때문이다. 앞사람이 커밋한 뒤에야 뒷사람이 읽으므로 뒷사람이 들고 있는
+     * 버전은 언제나 최신이다. 그래서 이 필드는 비관적 락 쪽 측정을 오염시키지 않는다.
+     *
+     * 다만 SQL 로그를 처음 보는 사람은 비관적 락인데 왜 버전 조건이 있느냐고 묻게 되므로
+     * 여기 적어 둔다. 이 줄을 지우면 낙관적 락 전략이 아무것도 감지하지 못하는 채로
+     * 조용히 통과한다. 락이 없던 시절과 같은 lost update 가 되고, 테스트만 초록이다.
+     *
+     * 타입은 래퍼가 아니라 원시 long 이다. 래퍼를 쓰면 null 이 아직 영속되지 않은 엔티티를
+     * 뜻할 수 있지만, 여기는 PK 가 IDENTITY 라 Hibernate 가 식별자로 그 판별을 이미 한다.
+     * docs/ERD.md 3-4 가 이 컬럼을 NOT NULL 기본값 0 으로 규정한 것과도 맞는다.
+     */
+    @Version
+    private long version;
+
     public Stock(Menu menu, int quantity) {
         this.menu = menu;
         this.quantity = quantity;

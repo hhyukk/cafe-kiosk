@@ -24,6 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * 커넥션 풀 크기를 재고 코드보다 먼저 박은 것과 같은 이유다. 원인을 잘못 짚는 길을 미리 막는다.
  *
+ * 하네스가 재시도까지 집계하기 시작했으므로 그 집계도 여기서 고정한다.
+ * 낙관적 락 비교표의 한 열이 이 숫자에서 나온다.
+ *
  * ── Spring 컨텍스트가 뜨는 것에 대해 ────────────────────────────────────────────
  *
  * 하네스 검증에 DB 는 필요 없지만 AbstractConcurrencyTest 를 그대로 상속한다.
@@ -43,7 +46,10 @@ public class ConcurrencyHarnessTest extends AbstractConcurrencyTest {
     void 모두_실행되고_번호가_겹치지_않는다() {
         Set<Integer> 받은번호 = ConcurrentHashMap.newKeySet();
 
-        ConcurrencyResult 결과 = 동시에_실행한다(스레드수, 번호 -> 받은번호.add(번호));
+        ConcurrencyResult 결과 = 동시에_실행한다(스레드수, 번호 -> {
+            받은번호.add(번호);
+            return 0;
+        });
 
         assertThat(결과.성공()).isEqualTo(스레드수);
         assertThat(결과.실패()).isZero();
@@ -64,6 +70,7 @@ public class ConcurrencyHarnessTest extends AbstractConcurrencyTest {
             if (번호 % 2 == 0) {
                 throw new 하네스검증용예외();
             }
+            return 0;
         });
 
         assertThat(결과.성공()).isEqualTo(스레드수 / 2);
@@ -86,12 +93,39 @@ public class ConcurrencyHarnessTest extends AbstractConcurrencyTest {
         // 진짜 실패를 가린다. 배리어는 순차 실행이면 반드시 실패하므로 결정적이다.
         CyclicBarrier 모두도착 = new CyclicBarrier(스레드수);
 
-        ConcurrencyResult 결과 = 동시에_실행한다(스레드수, 번호 -> 모두도착.await(배리어_한계_초, TimeUnit.SECONDS));
+        // await 의 반환값을 그대로 흘려보내지 않는다. CyclicBarrier.await 는 도착 순번을
+        // int 로 돌려주므로 그냥 두면 컴파일은 되면서 그 순번이 재시도 횟수로 집계된다.
+        // 재시도가 없었는데 45 라고 말하는 결과가 나오고, 원인을 락에서 찾게 된다.
+        ConcurrencyResult 결과 = 동시에_실행한다(스레드수, 번호 -> {
+            모두도착.await(배리어_한계_초, TimeUnit.SECONDS);
+            return 0;
+        });
 
         // 순차로 돌면 첫 스레드가 TimeoutException 으로 죽고 배리어가 깨져
         // 나머지가 BrokenBarrierException 을 받는다. 성공은 0 이 된다.
         assertThat(결과.성공()).isEqualTo(스레드수);
         assertThat(결과.실패()).isZero();
+    }
+
+    @Test
+    @DisplayName("성공한 스레드가 돌려준 재시도만 합산되고 실패한 스레드 것은 빠진다")
+    void 재시도는_성공한_스레드_것만_합산된다() {
+        // 번호를 그대로 재시도 횟수로 돌려준다. 짝수는 돌려주기 전에 죽는다.
+        // 홀수 번호 1, 3, 5, 7, 9 의 합인 25 만 남아야 한다.
+        // 전부 더하면 45 이므로 두 숫자가 확실히 갈린다.
+        ConcurrencyResult 결과 = 동시에_실행한다(스레드수, 번호 -> {
+            if (번호 % 2 == 0) {
+                throw new 하네스검증용예외();
+            }
+            return 번호;
+        });
+
+        assertThat(결과.재시도())
+                .as("실패한 스레드의 시도가 섞이면 45 가 된다. %s", 결과.요약())
+                .isEqualTo(25);
+
+        // 요약에 재시도가 실려야 빨간불 출력 한 줄을 PR 비교표로 옮길 수 있다.
+        assertThat(결과.요약()).contains("재시도 25");
     }
 
     /** 이 테스트 밖에서는 쓰지 않는다. 다른 예외와 섞이지 않는 타입이어야 실패수 단언이 성립한다. */

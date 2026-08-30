@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 동시성 테스트 베이스 클래스.
- * 스레드 여러 개를 같은 순간에 출발시키고 성공과 실패를 집계해 돌려준다.
+ * 스레드 여러 개를 같은 순간에 출발시키고 성공과 실패와 재시도를 집계해 돌려준다.
  *
  * ── 이 클래스에 @Transactional 이 없는 것이 핵심이다 ──────────────────────────────
  *
@@ -32,6 +32,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 추가하면 Spring 컨텍스트 캐시 키가 달라져 컨텍스트가 새로 뜬다.
  * 동시성 테스트는 서비스를 직접 부르므로 MockMvc 가 필요 없고, 베이스가
  * @AutoConfigureMockMvc 를 갖지 않은 덕분에 여기서 추가 비용이 들지 않는다.
+ *
+ * 락 전략을 바꿔 가며 재는 서브클래스는 이 규칙의 예외다. 프로퍼티를 바꾸는 순간
+ * 컨텍스트가 하나 더 뜨는데, 전략을 고르는 방법이 @ConditionalOnProperty 인 이상
+ * 피할 길이 없다. 그 비용을 어디서 치를지는 그 서브클래스들의 주석에 적혀 있다.
  *
  * ── 래치 세 개 ────────────────────────────────────────────────────────────────
  *
@@ -55,16 +59,26 @@ public abstract class AbstractConcurrencyTest extends AbstractIntegrationTest {
     private static final long 대기_한계_초 = 30;
 
     /**
-     * 동시에 실행할 작업. 스레드마다 자기 번호를 받는다.
+     * 동시에 실행할 작업. 스레드마다 자기 번호를 받고, 자기가 쓴 재시도 횟수를 돌려준다.
      *
      * IntConsumer 가 아니라 자체 인터페이스인 이유가 둘이다.
      * 번호를 받아야 스레드마다 다른 이메일 같은 것을 만들 수 있고, throws Exception 이
      * 있어야 checked 예외를 던지는 코드를 호출자가 try 로 감싸지 않고 그대로 부를 수 있다.
      * 어차피 하네스가 Throwable 을 통째로 잡으므로 여기서 좁힐 이유가 없다.
+     *
+     * ── 반환값이 void 가 아니라 int 인 이유 ──────────────────────────────────────
+     *
+     * 낙관적 락이 붙으면서 잴 것이 하나 늘었다. 재시도 횟수는 스레드마다 다르고,
+     * 그 값을 아는 것은 OrderFacade 를 부른 그 스레드뿐이다. 빈에 카운터를 두고
+     * 누적시키는 방법도 있지만 그러면 테스트 사이에 값이 새고, 열 스레드가 더하는 동안
+     * 테스트 스레드가 읽으면 언제 읽었느냐에 따라 다른 값이 나온다.
+     * 반환값으로 돌려받으면 각 스레드가 자기 몫만 들고 나오므로 그 창이 없다.
+     *
+     * 재시도를 세지 않는 작업은 0 을 돌려준다. 그 0 은 재시도가 없었다는 뜻이다.
      */
     @FunctionalInterface
     protected interface ConcurrentTask {
-        void run(int 번호) throws Exception;
+        int run(int 번호) throws Exception;
     }
 
     /**
@@ -79,6 +93,7 @@ public abstract class AbstractConcurrencyTest extends AbstractIntegrationTest {
         CountDownLatch 결승선 = new CountDownLatch(스레드수);
 
         AtomicInteger 성공 = new AtomicInteger();
+        AtomicInteger 재시도 = new AtomicInteger();
         ConcurrentLinkedQueue<Throwable> 예외들 = new ConcurrentLinkedQueue<>();
 
         // 가상 스레드를 쓰지 않는다. Java 21 에서는 JDBC 드라이버가 synchronized 블록
@@ -112,7 +127,10 @@ public abstract class AbstractConcurrencyTest extends AbstractIntegrationTest {
                         // 총 실패 건수만 맞고 이유는 알 수 없는 결과가 나오는데,
                         // 그 숫자로는 락이 동작한다는 말을 할 수 없다.
                         try {
-                            작업.run(번호);
+                            // 재시도를 성공한 스레드 것만 더한다. 실패한 스레드가 쓴 시도를
+                            // 같은 열에 섞으면 이 숫자가 무엇의 비용인지 흐려진다.
+                            // 예외가 나면 이 줄에서 흐름이 끊기므로 자연히 그렇게 된다.
+                            재시도.addAndGet(작업.run(번호));
                             성공.incrementAndGet();
                         } catch (Throwable t) {
                             예외들.add(t);
@@ -130,7 +148,8 @@ public abstract class AbstractConcurrencyTest extends AbstractIntegrationTest {
             대기한다(결승선, "모든 스레드가 끝나기를");
             Duration 소요시간 = Duration.ofNanos(System.nanoTime() - 시작);
 
-            ConcurrencyResult 결과 = new ConcurrencyResult(성공.get(), List.copyOf(예외들), 소요시간);
+            ConcurrencyResult 결과 =
+                    new ConcurrencyResult(성공.get(), List.copyOf(예외들), 재시도.get(), 소요시간);
 
             // 하네스가 스스로를 검사한다. 띄운 스레드 수와 집계된 수가 다르면 어떤 스레드가
             // 성공도 실패도 아닌 채로 사라진 것이고, 그 상태에서 성공 3 실패 7 같은 숫자를

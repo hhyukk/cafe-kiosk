@@ -55,8 +55,10 @@ API 문서는 http://localhost:8080/swagger-ui.html 이다. Redis 컨테이너�
 - **`adjustTo`는 `requirePositive`를 재사용하지 않는다.** 증감의 0 금지는 0개를 깎거나 채우는 호출이 무의미하다는 규칙이고, 조정의 0 허용은 재고가 0이 될 수 있다는 규칙이다. 같은 숫자를 두고 정반대를 말하므로 검증을 따로 둔다. 합치면 점주의 품절 처리가 통째로 400이 된다.
 - **재고 행이 없으면 만들어 주지 않고 터뜨린다.** 판정 자리는 `StockRepository.requireByMenuId` 하나다. 주문 차감, 취소 복구, 점주 조정 셋이 같은 물음을 갖는데 각자 `orElseThrow`를 쓰면 나중에 한쪽만 다른 예외로 바뀐다. `GlobalExceptionHandler`에 `StockNotFoundException` 매핑을 넣지 않는 것도 결정이다. `docs/ADR/ADR-0003` 참고.
 - **리포지토리 안에서 `IllegalStateException`이나 `IllegalArgumentException`을 던지지 않는다.** Spring Data 프록시의 예외 변환 인터셉터가 그 둘을 `InvalidDataAccessApiUsageException`으로 감싼다. JPA 명세가 프로바이더도 그 둘을 던질 수 있다고 규정했기 때문이다. 도메인 예외가 인프라 예외로 바뀌고, 감싸인 뒤에는 서로 다른 두 사건이 한 타입이 된다. `default` 메서드도 이 체인을 지난다. `StockNotFoundException` 주석에 자세히 있다.
-- **재고에 닿는 순서는 `menuId` 오름차순이다.** 차감도 복구도 그렇다. 락이 없는 지금은 결과가 달라지지 않지만, 두 손님이 같은 두 메뉴를 반대 순서로 담았을 때 서로가 쥔 행을 기다리는 상황을 막는 자리다. 재고를 건드리는 경로를 새로 만들면 같은 순서를 따른다.
+- **재고에 닿는 순서는 `menuId` 오름차순이다.** 차감도 복구도 그렇다. 두 손님이 같은 두 메뉴를 반대 순서로 담았을 때 서로가 쥔 행을 기다리는 상황을 막는 자리다. 락이 붙은 지금은 실제로 그 일을 한다. 재고를 건드리는 경로를 새로 만들면 같은 순서를 따른다.
 - **부분 차감을 보상 코드로 되돌리지 않는다.** 앞선 아이템이 깎인 뒤 부족이 드러나도 `OrderService.createOrder`의 트랜잭션이 통째로 롤백한다. 직접 되돌리는 코드를 넣으면 롤백과 이중으로 겹친다.
+- **락 전략은 `StockLockStrategy` 구현이 소유하고 프로퍼티로 갈린다.** `cafekiosk.stock.lock-strategy` 값에 `@ConditionalOnProperty`가 하나씩 대응하고, 조건은 각 구현 파일이 자기 것을 들고 있다. 전략을 더할 때 고치는 파일이 없어야 하므로 한곳에 모은 팩토리를 두지 않는다. `OrderService`는 어느 전략이 주입됐는지 모른 채 `acquire`만 부른다.
+- **낙관적 락 재시도는 `OrderFacade`가 소유하고, 거기에 `@Transactional`을 붙이지 않는다.** 버전 충돌은 트랜잭션이 롤백돼야 드러나므로 재시도는 죽은 트랜잭션 밖 새 트랜잭션에서 일어나야 한다. NFR-CON-05. 붙이는 순간 재시도가 무의미해지고, 그 사실이 예외가 아니라 조용한 실패로 나타난다. 컨트롤러에도 붙이지 않는 이유가 같다. 재고에 닿는 경로를 새로 만들면 서비스가 아니라 파사드를 거치게 한다.
 
 ## 백엔드 규약
 
@@ -65,8 +67,8 @@ API 문서는 http://localhost:8080/swagger-ui.html 이다. Redis 컨테이너�
 ```
 com.cafekiosk
 ├── menu/     controller, service, repository, entity, dto
-├── order/    controller, service, repository, entity, dto, exception
-├── stock/    controller, service, repository, entity, dto, exception
+├── order/    controller, facade, service, repository, entity, dto, exception
+├── stock/    controller, service, repository, entity, lock, dto, exception
 ├── file/     controller
 └── global/   config, globalExceptionHandler, initData, jpa, rsData, springDoc
 ```
@@ -93,7 +95,11 @@ com.cafekiosk
 
 `OrderStockTest`와 `StockControllerTest`도 같은 이유로 트랜잭션 밖에 선다. 잡는 결함은 다르다. 롤백이 재고 차감을 되돌리는지를 보는 테스트인데, 테스트가 트랜잭션을 먼저 열면 깎인 `Stock`이 같은 영속성 컨텍스트에 남아 재조회가 DB 대신 그 인스턴스를 돌려준다. 정상 롤백되는 코드인데 테스트만 빨개진다. `em.clear()`로도 안 된다. 더티 체킹이 만든 UPDATE가 같은 트랜잭션 안에서 이미 flush 됐기 때문이다. 트랜잭션 밖에 서는 테스트는 만든 행을 반드시 지운다. 남기면 `OrderControllerTest`가 전체 주문 목록 길이를 세는 자리에서 깨진다. 두 클래스가 같은 Spring 컨텍스트를 공유해 같은 DB를 본다.
 
-앞으로 쓸 동시성 테스트에도 같은 이유로 `@Transactional`을 붙이지 않는다. `ExecutorService`로 서비스를 직접 부른다. 테스트가 트랜잭션 안에서 돌면 동시성이 사라진다. 베이스가 `@AutoConfigureMockMvc`를 갖지 않는 이유가 이것이다.
+동시성 테스트에도 같은 이유로 `@Transactional`을 붙이지 않는다. `ExecutorService`로 빈을 직접 부른다. 테스트가 트랜잭션 안에서 돌면 동시성이 사라진다. 베이스가 `@AutoConfigureMockMvc`를 갖지 않는 이유가 이것이다. 부르는 대상은 `OrderService`가 아니라 `OrderFacade`다. 낙관적 락은 재시도 없이 성립하지 않으므로, 서비스를 직접 부르면 그 전략만 실패한다.
+
+**락 전략별 동시성 테스트는 시나리오를 한 벌로 두고 서브클래스가 전략만 바꾼다.** `AbstractOrderStockConcurrencyTest`가 무대와 단언을 갖고, `Pessimistic`과 `Optimistic` 서브클래스가 프로퍼티와 재시도 기대만 갖는다. 세 벌로 복사하면 어느 날 한 벌에만 손이 가고, 그 뒤로 비교표의 세 행이 서로 다른 실험을 재게 된다.
+
+전략을 바꾸는 서브클래스에 `@SpringBootTest`를 다시 붙이지 않는다. 붙이면 베이스의 `webEnvironment = RANDOM_PORT`를 덮어써 MOCK으로 되돌아간다. `@TestPropertySource`를 쓴다. 그리고 기본 전략인 비관적 락 쪽에는 아무 어노테이션도 붙이지 않는다. 값이 같아도 `@TestPropertySource`가 있으면 컨텍스트가 하나 더 뜬다.
 
 ## 프론트 규약
 

@@ -3,6 +3,7 @@ package com.cafekiosk.order.controller;
 import com.cafekiosk.global.rsData.RsData;
 import com.cafekiosk.order.dto.OrderDto;
 import com.cafekiosk.order.entity.OrderStatus;
+import com.cafekiosk.order.facade.OrderFacade;
 import com.cafekiosk.order.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -30,6 +31,11 @@ import java.util.List;
 public class OrderController {
     private final OrderService orderService;
 
+    // 재고에 닿는 두 경로는 파사드를 거친다. 낙관적 락 재시도가 롤백된 트랜잭션 밖
+    // 새 트랜잭션에서 일어나야 하기 때문이다. 조회 둘은 재고를 건드리지 않으므로
+    // 서비스를 그대로 부른다. 파사드를 거쳐 봐야 재시도할 일이 없다.
+    private final OrderFacade orderFacade;
+
     @Operation(
             summary = "주문 등록",
             description = "사용자 이메일과 선택한 메뉴 목록을 받아 새로운 주문을 생성하고, 손님이 받아갈 대기번호를 반환합니다."
@@ -43,6 +49,8 @@ public class OrderController {
     // 새 트랜잭션에서 일어나야 하는데(NFR-CON-05), 여기서 트랜잭션을 열면 재고 차감이 실패해
     // 롤백돼도 바깥 트랜잭션이 살아 있어 재시도가 이미 죽은 트랜잭션 안에서 벌어진다.
     // 트랜잭션 경계는 전부 OrderService 가 갖는다.
+    // 그 재시도를 실제로 도는 자리가 OrderFacade 다. 이 주석이 비워 두라고 적어 둔
+    // 바깥 자리가 이제 채워졌다.
     @PostMapping("/api/order")
     public ResponseEntity<OrderDto.CreateResponse> createOrder(
             @Valid @RequestBody OrderDto.CreateRequest request) {
@@ -59,7 +67,7 @@ public class OrderController {
                     .body(OrderDto.CreateResponse.rejected("주문 수량은 1개 이상 100개 이하만 가능합니다."));
         }
 
-        return ResponseEntity.ok(orderService.createOrder(request));
+        return ResponseEntity.ok(orderFacade.createOrder(request).value());
     }
 
     @PostMapping("/api/order/list")
@@ -113,7 +121,7 @@ public class OrderController {
             @PathVariable Long orderId,
             @Valid @RequestBody OrderDto.ChangeStatusRequest request) {
 
-        orderService.changeStatus(orderId, request.status());
+        orderFacade.changeStatus(orderId, request.status());
 
         return ResponseEntity.ok(
                 new OrderDto.ChangeStatusResponse("주문 상태가 변경되었습니다.")
