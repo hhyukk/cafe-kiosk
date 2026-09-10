@@ -3,6 +3,7 @@ package com.cafekiosk.global.globalExceptionHandler;
 import com.cafekiosk.global.rsData.RsData;
 import com.cafekiosk.order.exception.InvalidOrderStatusTransitionException;
 import com.cafekiosk.stock.exception.OutOfStockException;
+import com.cafekiosk.stock.exception.StockLockTimeoutException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import java.util.stream.Collectors;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
+import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
 
 @ControllerAdvice
 @RequiredArgsConstructor
@@ -112,6 +114,24 @@ public class GlobalExceptionHandler {
                         "주문이 몰려 처리하지 못했습니다. 잠시 후 다시 시도해 주세요."
                 ),
                 CONFLICT
+        );
+    }
+
+    // 503 : SERVICE UNAVAILABLE. 분산 락을 대기 한계 안에 얻지 못한 경우.
+    //       409 계열과 나누는 이유는 사건의 종류가 다르기 때문이다. 재고 부족과 상태 전이
+    //       충돌은 자원의 현재 상태와 부딪힌 것이라 그 상태가 바뀌지 않는 한 다시 눌러도
+    //       같은 답이지만, 이쪽은 자원에 닿아 보지도 못했고 줄이 짧아지면 통과한다.
+    //
+    //       예외 메시지에 menuId 가 담겨 있어 그대로 쓰지 않는다. 손님이 알 것도 아니고
+    //       할 수 있는 일도 다시 시도하는 것 하나다. 원문은 스택 트레이스에 남는다.
+    @ExceptionHandler(StockLockTimeoutException.class)
+    public ResponseEntity<RsData<Void>> handle(StockLockTimeoutException ex) {
+        return new ResponseEntity<>(
+                new RsData<>(
+                        "503-1",
+                        "주문이 몰려 처리하지 못했습니다. 잠시 후 다시 시도해 주세요."
+                ),
+                SERVICE_UNAVAILABLE
         );
     }
 

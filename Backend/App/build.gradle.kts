@@ -35,6 +35,13 @@ dependencies {
     annotationProcessor("org.projectlombok:lombok")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.9")
 
+    // 분산 락. redisson-spring-boot-starter 는 Spring Boot 4.0 에 아직 대응하지 않아
+    // 순수 클라이언트만 넣는다. RedissonClient 빈은 DistributedStockLockConfig 가 직접 만든다.
+    // Spring Boot BOM 의 관리 대상이 아니라 버전을 직접 적는다.
+    // 4.7.0 은 netty-bom 4.2.16.Final 위에 서 있어 Spring Boot 4.0 이 관리하는 Netty 와
+    // 같은 4.2 계열이다. 3.x 를 쓰면 Netty 4.1 을 끌어와 버전이 갈린다.
+    implementation("org.redisson:redisson:4.7.0")
+
     // 테스트용 의존성
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-test-autoconfigure")
