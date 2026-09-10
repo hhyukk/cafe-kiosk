@@ -39,12 +39,21 @@ cafekiosk:
   stock:
     # 재고 차감과 복구가 어느 락으로 도는지 고른다. 값을 지우면 pessimistic 이다.
     # 세 전략을 같은 동시성 테스트에 걸어 성공 건수와 재시도 횟수로 비교하려고 둔 스위치다.
-    # 지금 있는 값은 pessimistic 과 optimistic 둘이고 distributed 는 뒤에 붙는다.
+    # 값은 pessimistic 과 optimistic 과 distributed 셋이다.
     # optimistic 은 이 스위치만으로 완성되지 않는다. 잠그지 않고 읽는 대신 커밋 시점에
     # 버전이 충돌을 알리므로, 롤백된 시도를 새 트랜잭션에서 다시 태우는 OrderFacade 가
     # 짝으로 있어야 한다. 그쪽이 없으면 열 손님 중 한 명만 성공하고 재고가 남는다.
     # 없는 값을 적으면 StockLockStrategy 빈이 안 떠서 컨텍스트가 시작하지 못한다.
+    # distributed 는 Redis 가 떠 있어야 한다. RedissonClient 빈이 이 값일 때만 만들어지므로
+    # 다른 값으로 두면 Redis 없이도 애플리케이션이 뜬다.
     lock-strategy: pessimistic
+
+    # 분산 락이 쓸 Redis 주소. lock-strategy 가 distributed 일 때만 읽힌다.
+    # spring.data.redis.* 를 쓰지 않는 이유는 그 이름을 읽는 자동 설정이 이 프로젝트에
+    # 없기 때문이다. 스타터 없이 이름만 빌리면 값을 고쳐도 아무 일이 없다.
+    # 테스트는 이 값을 쓰지 않는다. Testcontainers 가 띄운 Redis 의 주소를
+    # DistributedOrderStockConcurrencyTest 가 @DynamicPropertySource 로 덮어쓴다.
+    redis-address: redis://localhost:6379
 
 # server.base-url 은 제거했다 (FR-FILE-07).
 # 업로드 응답에 호스트를 붙이는 용도로만 쓰였는데, 그 값이 Menu.imgUrl 로 DB 에 저장돼
