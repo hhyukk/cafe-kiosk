@@ -55,8 +55,8 @@ public class ConcurrencyHarnessTest extends AbstractConcurrencyTest {
         assertThat(결과.실패()).isZero();
 
         // 번호가 겹치면 다음 단계에서 스레드마다 다른 이메일을 만들 수 없다.
-        // 이메일이 겹치면 재고가 아니라 Customer 유니크 제약에서 먼저 죽는데,
-        // 그건 별도 단계가 다루는 주제라 여기 섞이면 무엇을 재는지 알 수 없게 된다.
+        // 이메일이 겹치면 재고보다 손님 행에서 먼저 서로 부딪히는데, 그 경쟁은
+        // OrderCustomerConcurrencyTest 가 따로 재므로 여기 섞이면 무엇을 재는지 알 수 없게 된다.
         assertThat(받은번호)
                 .containsExactlyInAnyOrderElementsOf(IntStream.range(0, 스레드수).boxed().toList());
     }

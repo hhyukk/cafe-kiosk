@@ -176,8 +176,11 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
 
     /**
      * 스레드마다 다른 이메일을 쓴다.
-     * 같은 이메일이면 Customer 유니크 제약에서 먼저 죽어 재고에 닿지도 못한다.
-     * 그 경쟁은 별도 단계가 다루는 주제라 여기 섞이면 무엇을 재는지 알 수 없게 된다.
+     * 같은 이메일이면 손님 행 확보에서 먼저 서로 부딪히고, 그 충돌을 흡수하는 시간이 소요시간에 섞인다.
+     * 그 경쟁은 OrderCustomerConcurrencyTest 가 따로 재므로 여기 섞이면 무엇을 재는지 알 수 없게 된다.
+     *
+     * 다른 이메일이어도 스레드마다 첫 주문이라 손님 행을 만드는 트랜잭션이 하나씩 붙는다.
+     * 세 전략에 똑같이 붙으므로 전략 비교에서는 상수다.
      */
     private static String 이메일(int 번호) {
         return "concurrency-%d@example.com".formatted(번호);
