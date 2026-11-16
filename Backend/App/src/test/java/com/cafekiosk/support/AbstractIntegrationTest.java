@@ -64,6 +64,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  *        └─ spring.datasource.url = jdbc:postgresql://localhost:49152/test
  *   └─ Spring 컨텍스트 생성 (위 URL 로 연결)
  *   └─ 각 테스트 실행 (@Transactional → 롤백)
+ *        └─ 손님 행은 예외다. CustomerService 가 주문과 따로 커밋해 이 롤백에 실리지 않는다
  *
  * JVM 종료
  *   └─ Ryuk 이 postgres:16 컨테이너 자동 삭제

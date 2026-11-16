@@ -14,6 +14,7 @@ import com.cafekiosk.stock.entity.Stock;
 import com.cafekiosk.stock.lock.StockLockStrategy;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 
 @Service
@@ -30,6 +32,10 @@ import java.util.Map;
 public class OrderService {
 
     private final CustomerRepository customerRepository;
+
+    // 손님 행을 주문과 다른 트랜잭션에서 만든다. 이유는 CustomerService 주석에 있다
+    private final CustomerService customerService;
+
     private final OrderRepository orderRepository;
     private final MenuRepository menuRepository;
     private final OrderItemRepository orderItemRepository;
@@ -40,10 +46,9 @@ public class OrderService {
 
     @Transactional
     public OrderDto.CreateResponse createOrder(OrderDto.CreateRequest request) {
-        Customer customer = customerRepository.findByEmail(request.email())
-                .orElseGet(() -> customerRepository.save(
-                        new Customer(request.email())
-                ));
+        // 손님 확보가 맨 앞이어야 한다. 재고 락 뒤로 가면 행 락을 쥔 채 다른 트랜잭션의
+        // 커밋을 기다리게 되고, 그 대기가 세 락 전략의 소요시간에 섞인다
+        Customer customer = findOrCreateCustomer(request.email());
 
         Order order = new Order(customer, LocalDateTime.now());
 
@@ -91,6 +96,67 @@ public class OrderService {
                 order.getOrderNumber(),
                 order.getTotalPrice()
         );
+    }
+
+    /**
+     * 이메일로 손님을 찾고, 없으면 만든다. 같은 이메일 첫 주문이 동시에 와도 여기서 죽지 않는다.
+     *
+     * ── 바깥에서 먼저 찾는 이유 ──────────────────────────────────────────────────
+     *
+     * 재방문 손님은 새 트랜잭션을 열 일이 없다. 그보다 무거운 이유가 하나 더 있다.
+     * 조회까지 안쪽 트랜잭션에 넣으면, 바깥 트랜잭션이 같은 이메일 행을 써 두고 아직 커밋하지 않은
+     * 경우 안쪽은 그 행을 못 본 채 INSERT 하고 바깥의 커밋을 기다린다. 바깥은 같은 스레드에서
+     * 안쪽이 돌아오기를 기다린다. 대기의 한쪽이 DB 락이 아니라 애플리케이션 스레드라서 PostgreSQL 은
+     * 이것을 교착으로 잡지 못하고 영영 멈춘다. OrderControllerTest 의 기존 고객 테스트가 정확히
+     * 그 모양이다. 바깥에서 먼저 찾으면 같은 트랜잭션 안의 미커밋 행이 보이므로 이 경로가 사라진다.
+     *
+     * ── 다시 읽는 이유 ──────────────────────────────────────────────────────────
+     *
+     * 안쪽이 만든 인스턴스는 그 EntityManager 가 닫히며 준영속이 된다. Order 생성자가
+     * customer.getOrders() 를 건드리므로 바깥 영속성 컨텍스트에 붙은 인스턴스여야 한다.
+     * 충돌 경로에는 애초에 넘겨받을 인스턴스가 없다. 그래서 성공이든 충돌이든 다시 읽는다.
+     *
+     * 다시 읽어서 보이는 것은 READ COMMITTED 덕분이다. 문장마다 새 스냅숏을 잡으므로 방금 커밋된
+     * 행이 보인다. REPEATABLE READ 로 올리면 스냅숏이 첫 조회에 고정되어 자기 안쪽이 커밋한 행도
+     * 못 본다. DistributedStockLockStrategy 가 같은 격리 수준에 기대고 있는 것과 같은 계열이다.
+     *
+     * ── 잡는 예외 ───────────────────────────────────────────────────────────────
+     *
+     * DataIntegrityViolationException 하나다. 같은 이메일 열 건을 동시에 던진 테스트에서 실제로
+     * 이 타입이 나왔고 하위 타입인 DuplicateKeyException 이 아니었다. customer 행의 제약은
+     * email 유니크뿐이라 이 예외는 그 충돌이다. 그래도 다시 읽어 행이 없으면 다른 위반이었던
+     * 것이므로 원래 예외를 그대로 던진다.
+     *
+     * ── 버린 대안 ───────────────────────────────────────────────────────────────
+     *
+     * OrderFacade 에서 다시 시도하는 방법. 재시도 횟수가 세 락 전략 비교표의 한 열인데 손님
+     * 충돌이 섞인다. 파사드가 재고 부족을 다시 시도하지 않는 것과 같은 이유다.
+     *
+     * INSERT ... ON CONFLICT DO NOTHING. 예외 없이 같은 트랜잭션에서 끝나지만 네이티브 SQL 이
+     * ddl-auto 가 만든 컬럼 이름에 묶이고, 생성일과 수정일을 채우는 감사 리스너를 건너뛴다.
+     * 그리고 경쟁자가 승자의 주문 트랜잭션 전체를 기다리는 것은 고치기 전과 같다.
+     *
+     * NESTED 세이브포인트. JpaTransactionManager 에서는 기본으로 꺼져 있고, 켜도 JDBC 커넥션만
+     * 되감을 뿐 EntityManager 와 그 안의 엔티티는 되감지 않는다. 실패한 Customer 가 영속성
+     * 컨텍스트에 남는다. JpaTransactionManager javadoc 이 그렇게 적고 있다.
+     */
+    private Customer findOrCreateCustomer(String email) {
+        Optional<Customer> found = customerRepository.findByEmail(email);
+        if (found.isPresent()) {
+            return found.get();
+        }
+
+        try {
+            customerService.create(email);
+        } catch (DataIntegrityViolationException e) {
+            // 같은 이메일의 다른 첫 주문이 먼저 커밋했다. 그 행을 읽으면 된다
+            return customerRepository.findByEmail(email).orElseThrow(() -> e);
+        }
+
+        // 방금 커밋한 행이 안 보이는 것은 일어날 수 없는 상태다. 맨 orElseThrow 로 두면
+        // NoSuchElementException 이 GlobalExceptionHandler 에서 404 가 되어 사실과 다른 말을 한다
+        return customerRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalStateException("방금 커밋한 손님 행이 보이지 않습니다: " + email));
     }
 
     /**

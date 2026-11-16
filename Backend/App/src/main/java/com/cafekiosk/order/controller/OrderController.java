@@ -48,7 +48,7 @@ public class OrderController {
     // 컨트롤러에 @Transactional 을 붙이지 않는다. 낙관적 락 재시도는 롤백된 트랜잭션 밖
     // 새 트랜잭션에서 일어나야 하는데(NFR-CON-05), 여기서 트랜잭션을 열면 재고 차감이 실패해
     // 롤백돼도 바깥 트랜잭션이 살아 있어 재시도가 이미 죽은 트랜잭션 안에서 벌어진다.
-    // 트랜잭션 경계는 전부 OrderService 가 갖는다.
+    // 트랜잭션 경계는 전부 서비스가 갖는다. 손님 행만 CustomerService 가 주문과 따로 커밋한다.
     // 그 재시도를 실제로 도는 자리가 OrderFacade 다. 이 주석이 비워 두라고 적어 둔
     // 바깥 자리가 이제 채워졌다.
     @PostMapping("/api/order")
