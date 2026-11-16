@@ -26,7 +26,7 @@
 | `frontend/` | Next.js 16 App Router, React 19, TypeScript 5, Tailwind 4. 3000 |
 | `docs/` | 기획, 요구사항, API, ERD |
 | `.github/` | CI와 PR, 이슈 템플릿 |
-| `.claude/docs/` | 트러블슈팅 기록. gitignore 대상이다 |
+| `.claude/blog/` | 트러블슈팅 기록. gitignore 대상이다 |
 
 **Gradle 루트는 레포 루트가 아니다.** `gradlew`는 `Backend/App/`에 있다. 레포 루트에서 `./gradlew`를 실행하면 실패한다. CI도 `working-directory: Backend/App`으로 고정돼 있다.
 
@@ -41,7 +41,7 @@ docker compose up -d                     # PostgreSQL 16, Redis 7
 cd ../../frontend && npm run dev         # 3000
 ```
 
-API 문서는 http://localhost:8080/swagger-ui.html 이다. Redis 컨테이너는 지금 코드가 쓰지 않는다. 분산 락 단계를 위한 자리다.
+API 문서는 http://localhost:8080/swagger-ui.html 이다. Redis 컨테이너는 `--cafekiosk.stock.lock-strategy=distributed`로 띄울 때만 쓴다. 테스트는 이 컨테이너를 쓰지 않는다. `DistributedOrderStockConcurrencyTest`가 Testcontainers로 자기 Redis를 띄운다.
 
 ## 설계 규칙: 불변식은 엔티티가 소유한다
 
@@ -176,4 +176,4 @@ test: OrderControllerTest AbstractIntegrationTest 상속으로 전환
 
 `.github/workflows/ci.yml`은 main과 develop 대상 PR과 push에서 `./gradlew test --no-daemon`만 돌린다. **프론트엔드는 CI에서 검증되지 않는다.** lint조차 돌지 않으므로 FE 변경은 로컬에서 직접 확인한다.
 
-이 레포에서 Claude는 코드만 쓴다. 빌드, 테스트, 실행은 사용자가 직접 한다. 작업 중 트러블슈팅이 생기면 `.claude/docs/`에 MD 파일로 남긴다.
+이 레포에서 Claude는 코드만 쓴다. 빌드, 테스트, 실행은 사용자가 직접 한다. 작업 중 트러블슈팅이 생기면 `.claude/blog/`에 MD 파일로 남긴다.
