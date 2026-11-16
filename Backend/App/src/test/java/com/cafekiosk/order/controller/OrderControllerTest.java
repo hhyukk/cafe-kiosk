@@ -19,6 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.transaction.AfterTransaction;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -65,6 +66,19 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     private Menu menu1;
     private Menu menu2;
 
+    // 서비스까지 닿는 이메일 전부. 손님 행은 CustomerService 가 주문과 따로 커밋하므로
+    // 이 클래스의 롤백에 실리지 않는다. 주문이 400 으로 실패하는 test@test.com 도 손님 행은 남는다.
+    // existing@test.com 은 테스트 트랜잭션 안에서 만들어 함께 롤백되지만 빠짐없이 적는다.
+    // 쓰는 이메일을 목록 하나에 모으는 것은 OrderStockTest 와 같은 방식이다
+    private static final List<String> 사용하는이메일 = List.of(
+            "order@example.com",
+            "test-create@example.com",
+            "newcustomer@test.com",
+            "existing@test.com",
+            "test@test.com",
+            "multi@test.com"
+    );
+
     // 예전엔 @BeforeEach 가 setup() / setUp() 두 개였다(이름만 대소문자 차이).
     // JUnit 5는 둘 다 실행하고 순서를 보장하지 않아 매 테스트마다 메뉴가 중복 생성됐다. 하나로 합쳤다.
     @BeforeEach
@@ -89,6 +103,23 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                 )
         );
         orderService.createOrder(createRequest);
+    }
+
+    /**
+     * 테스트 트랜잭션이 롤백된 뒤에 남은 손님 행을 지운다.
+     *
+     * 정리를 @AfterEach 에 두지 않는 이유가 있다. @AfterEach 는 테스트 트랜잭션 안에서 돌아
+     * 지운 것까지 함께 롤백된다. 반면 @AfterTransaction 은 트랜잭션이 끝난 뒤 밖에서 돌고,
+     * 리포지토리 호출이 각자 커밋된다.
+     *
+     * 남겨 두면 두 번째 테스트부터 setup 의 order@example.com 이 새 손님 경로 대신 이미 있는
+     * 손님 경로를 탄다. 어느 테스트가 먼저 도느냐에 따라 같은 테스트가 다른 코드를 지나게 된다.
+     */
+    @AfterTransaction
+    void cleanup() {
+        for (String email : 사용하는이메일) {
+            customerRepository.findByEmail(email).ifPresent(customerRepository::delete);
+        }
     }
 
     @Test
