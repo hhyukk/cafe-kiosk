@@ -13,11 +13,11 @@ import com.cafekiosk.stock.repository.StockRepository;
 import com.cafekiosk.support.AbstractConcurrencyTest;
 import com.cafekiosk.support.ConcurrencyResult;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -97,36 +97,22 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
     @Autowired
     private CustomerRepository customerRepository;
 
-    private Menu 산토스;
-
-    @BeforeEach
-    void setup() {
-        산토스 = menuRepository.save(
-                new Menu("동시성 확인용 산토스", "tmpImgUrl", 12000, "커피원두", "example@example.com"));
-        stockRepository.save(new Stock(산토스, 시작재고));
-    }
+    /**
+     * 지금 무대에 서 있는 메뉴들이다. 저장하는 즉시 넣어 두므로 무대를 세우다 도중에 실패해도
+     * 여기 든 것은 치워진다.
+     */
+    private final List<Menu> 메뉴들 = new ArrayList<>();
 
     @AfterEach
     void cleanup() {
-        for (int 번호 = 0; 번호 < 스레드수; 번호++) {
-            String email = 이메일(번호);
-            // 캐스케이드에 기대지 않고 외래키 안쪽부터 지운다. 성공했든 롤백됐든 전부 대상이다
-            orderItemRepository.deleteAllInBatch(orderItemRepository.findByOrderCustomerEmail(email));
-            orderRepository.deleteAllInBatch(orderRepository.findByCustomerEmail(email));
-            customerRepository.findByEmail(email).ifPresent(customerRepository::delete);
-        }
-
-        // setup 이 도중에 실패하면 산토스가 비어 있을 수 있다
-        if (산토스 != null) {
-            stockRepository.findByMenuId(산토스.getId()).ifPresent(stockRepository::delete);
-            menuRepository.findById(산토스.getId()).ifPresent(menuRepository::delete);
-            산토스 = null;
-        }
+        무대를_치운다();
     }
 
     @Test
     @DisplayName("재고 3 에 열 스레드가 한 잔씩 주문하면 세 건만 성공하고 최종 재고가 0 이다")
     void 마지막_한_잔은_남은_수만큼만_팔린다() {
+        Menu 산토스 = 무대를_세운다(1, 시작재고).getFirst();
+
         ConcurrencyResult 결과 = 동시에_실행한다(스레드수, 번호 ->
                 orderFacade.createOrder(주문요청(번호)).retries());
 
@@ -143,7 +129,7 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
                 .as("재고가 부족해 거절된 건수여야 한다. %s", 결과.요약())
                 .isEqualTo(스레드수 - 시작재고);
 
-        assertThat(재고())
+        assertThat(재고(산토스))
                 .as("최종 재고. 락이 없으면 앞사람이 깎은 만큼이 덮어써져 0 보다 크게 남는다. %s", 결과.요약())
                 .isZero();
 
@@ -167,10 +153,52 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
      */
     protected abstract void 재시도를_검사한다(ConcurrencyResult 결과);
 
+    /**
+     * 메뉴를 메뉴수만큼 만들고 저마다 같은 재고를 심는다. 만든 메뉴를 만든 순서대로 돌려준다.
+     *
+     * 스레드가 주문할 메뉴는 스레드 번호를 메뉴 수로 나눈 나머지로 정해진다. 메뉴가 하나면 열 스레드가
+     * 한 재고 행에 몰리고, 열 개면 스레드마다 자기 행을 갖는다. 이 무대에서 경쟁의 세기를 바꾸는
+     * 손잡이는 행 하나에 몰리는 스레드 수뿐이다. 출발선이 모든 스레드를 같은 순간에 내보내므로
+     * 재고를 늘려도 한 행을 함께 두드리는 스레드 수는 줄지 않는다.
+     */
+    private List<Menu> 무대를_세운다(int 메뉴수, int 메뉴당재고) {
+        // 앞 무대가 남아 있으면 나머지 연산이 남은 메뉴까지 세어 스레드와 메뉴의 짝이 조용히 어긋난다
+        assertThat(메뉴들).as("앞 무대를 치우지 않고 새로 세우려 한다").isEmpty();
+
+        for (int i = 0; i < 메뉴수; i++) {
+            Menu 메뉴 = menuRepository.save(new Menu(
+                    "동시성 확인용 산토스 " + i, "tmpImgUrl", 12000, "커피원두", "example@example.com"));
+            메뉴들.add(메뉴);
+            stockRepository.save(new Stock(메뉴, 메뉴당재고));
+        }
+        return List.copyOf(메뉴들);
+    }
+
+    /**
+     * 무대에 남은 것을 전부 지운다. 손님 쪽을 메뉴 쪽보다 먼저 지운다.
+     * 주문 아이템이 메뉴를 참조하므로 순서가 바뀌면 외래키에 걸린다.
+     */
+    private void 무대를_치운다() {
+        for (int 번호 = 0; 번호 < 스레드수; 번호++) {
+            String email = 이메일(번호);
+            // 캐스케이드에 기대지 않고 외래키 안쪽부터 지운다. 성공했든 롤백됐든 전부 대상이다
+            orderItemRepository.deleteAllInBatch(orderItemRepository.findByOrderCustomerEmail(email));
+            orderRepository.deleteAllInBatch(orderRepository.findByCustomerEmail(email));
+            customerRepository.findByEmail(email).ifPresent(customerRepository::delete);
+        }
+
+        for (Menu 메뉴 : 메뉴들) {
+            stockRepository.findByMenuId(메뉴.getId()).ifPresent(stockRepository::delete);
+            menuRepository.findById(메뉴.getId()).ifPresent(menuRepository::delete);
+        }
+        메뉴들.clear();
+    }
+
     private OrderDto.CreateRequest 주문요청(int 번호) {
+        Menu 메뉴 = 메뉴들.get(번호 % 메뉴들.size());
         return new OrderDto.CreateRequest(
                 이메일(번호),
-                List.of(new OrderDto.OrderItemRequest(산토스.getId(), 1))
+                List.of(new OrderDto.OrderItemRequest(메뉴.getId(), 1))
         );
     }
 
@@ -187,8 +215,8 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
     }
 
     // 테스트를 감싸는 트랜잭션이 없으므로 이 조회는 자기 트랜잭션에서 돌고 커밋된 값을 본다
-    private int 재고() {
-        return stockRepository.findByMenuId(산토스.getId()).orElseThrow().getQuantity();
+    private int 재고(Menu 메뉴) {
+        return stockRepository.findByMenuId(메뉴.getId()).orElseThrow().getQuantity();
     }
 
     private long 커밋된주문수() {
