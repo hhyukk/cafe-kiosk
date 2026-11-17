@@ -18,9 +18,26 @@ spring:
       # 5 초면 빨리 터지고 스택에 풀 이름이 찍혀 커넥션 문제라는 것이 바로 드러난다.
       connection-timeout: 5000
   jpa:
+    # application.yml 이 켜 둔 SQL 출력을 테스트에서는 끈다.
+    # 동시성 테스트의 측정 구간 안에서 열 스레드가 저마다 SQL 을 콘솔에 찍는데, 콘솔에는
+    # 한 번에 한 스레드만 쓸 수 있다. 스레드들이 거기서 줄을 서면 재려던 경쟁이 조용히 약해진다.
+    # 하네스가 가상 스레드까지 피해 가며 막으려던 바로 그 일이다. 소요시간도 락이 아니라
+    # 출력을 재게 되고, 재시도가 많은 전략일수록 찍는 SQL 이 많아 전략 사이의 차이가 부풀려진다.
+    #
+    # bootRun 으로 띄우는 dev 프로필의 출력은 그대로다. 테스트에서 SQL 을 봐야 할 때는
+    # 로컬에서 잠시 true 로 되돌린다. 되돌린 채 잰 수치는 락 전략 비교에 쓰지 않는다.
+    show-sql: false
     hibernate:
       ddl-auto: create-drop
     properties:
       hibernate:
         format_sql: true
         use_sql_comments: true
+
+logging:
+  level:
+    # show-sql 을 끈 것과 같은 이유다. application.yml 의 TRACE 는 바인딩한 값과 읽어 온 값을
+    # 하나마다 한 줄씩 찍고, 트랜잭션이 열리고 닫힐 때도 찍는다. 같은 줄 서기가 그대로 생긴다.
+    org.hibernate.orm.jdbc.bind: INFO
+    org.hibernate.orm.jdbc.extract: INFO
+    org.springframework.transaction.interceptor: INFO
