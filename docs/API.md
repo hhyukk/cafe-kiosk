@@ -42,10 +42,12 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 | HTTP | resultCode | 발생 상황 | 예외 |
 | --- | --- | --- | --- |
 | 400 | 400-1 | 본문 검증 실패, 잘못된 파라미터, 읽을 수 없는 본문 | MethodArgumentNotValidException, IllegalArgumentException, MethodArgumentTypeMismatchException, HttpMessageNotReadableException |
-| 401 | 미정 | 인증 실패, 토큰 없음 | 목표, Spring Security |
+| 401 | 401-1 | 점주 API 를 토큰 없이 또는 위조되거나 만료된 토큰으로 호출, 로그인 실패 | AuthenticationException, InvalidCredentialsException |
 | 404 | 404-1 | 대상 데이터 없음 | NoSuchElementException |
 | 409 | 409-1 | 허용되지 않은 주문 상태 전이, 재고 부족, 낙관적 락 재시도 소진 | InvalidOrderStatusTransitionException, OutOfStockException, OptimisticLockingFailureException |
 | 503 | 503-1 | 분산 락 대기 한계 초과 | StockLockTimeoutException |
+
+401 은 두 갈래이고 메시지가 다르다. 토큰 문제는 로그인이 필요합니다이고 `WWW-Authenticate: Bearer` 헤더가 함께 나간다. 토큰이 깨졌으면 그 헤더에 invalid_token 오류 코드가 붙는다. 로그인 실패는 이메일 또는 비밀번호가 올바르지 않습니다다. 토큰 문제는 보안 필터에서 터져 DispatcherServlet 을 거치지 않으므로, `global/security/RsDataAuthenticationEntryPoint` 가 MVC 의 예외 리졸버로 넘겨 이 핸들러가 봉투를 쓴다.
 
 ### 2-3. 인증
 
@@ -53,7 +55,11 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 
 인가는 서버가 검증한 신원에 근거한다. 요청 본문의 이메일을 비교해 권한을 판단하지 않는다. FR-AUTH-05, NFR-SEC-06.
 
-현재 구현 메모. 인증이 아직 없다. 메뉴 수정과 삭제는 본문 이메일을 비교하는 수준이고, 주방과 관리자 API는 아무 보호가 없다. 아래 상세에서 인증이 필요 이라 적은 엔드포인트는 지금은 열려 있다.
+토큰은 이 서버가 직접 발급하고 Spring Security 리소스 서버가 검증한다. sub 는 점주 이메일이고 role 클레임에 ROLE_OWNER 가 실리며 수명은 12시간이다. 리프레시 토큰이 없으므로 수명이 곧 다시 로그인하는 주기다. 서명 키는 환경 변수 JWT_SECRET 에서만 읽는다. 판단은 `docs/ADR/ADR-0006` 에 있다.
+
+경로별 권한은 `global/security/SecurityConfig` 한곳이 정하고 잠긴 것이 기본이다. 3절 표에서 인증 없음인 경로와 `/uploads/**`, Swagger 만 열려 있고 나머지 경로는 전부 ROLE_OWNER 다. 현재 구현 전용인 `POST /api/order/list` 도 대기번호 조회로 대체될 때까지 손님 경로로 열어 둔다. 손님 엔드포인트를 새로 만들면 공개 목록에 메서드까지 맞춰 더해야 한다. 잊으면 401 이다.
+
+현재 구현 메모. 백엔드 인증이 붙었다. 점주 API 를 토큰 없이 부르면 401 이다. 남은 것은 둘이다. 메뉴 수정과 삭제가 토큰을 확인한 뒤에도 본문 이메일을 다시 비교한다. 그리고 BFF 가 아직 토큰을 다루지 않아, 지금 화면의 메뉴 등록, 수정, 삭제, 이미지 업로드는 토큰 없이 백엔드를 불러 401 을 받는다.
 
 ### 2-4. CORS
 
@@ -66,7 +72,6 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 | 메서드 | 경로 | 인증 | 하는 일 | FR |
 | --- | --- | --- | --- | --- |
 | POST | `/api/auth/login` | 없음 | 점주 로그인, 토큰 발급 | FR-AUTH-01 |
-| POST | `/api/auth/logout` | ROLE_OWNER | 로그아웃, 쿠키 삭제 | FR-AUTH-09 |
 | GET | `/api/menu` | 없음 | 메뉴 목록 조회, 재고 포함 | FR-MNU-01, FR-KSK-08 |
 | POST | `/api/menu` | ROLE_OWNER | 메뉴 등록 | FR-MNU-02 |
 | PUT | `/api/menu/modify/{id}` | ROLE_OWNER | 메뉴 수정 | FR-MNU-02 |
@@ -78,15 +83,17 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 | PATCH | `/api/stock/{menuId}` | ROLE_OWNER | 재고 조정 | FR-ADM-02 |
 | POST | `/api/upload/image` | ROLE_OWNER | 메뉴 이미지 업로드 | FR-FILE-01 |
 
+로그아웃은 표에 없다. 백엔드 엔드포인트를 두지 않고 BFF 가 쿠키를 지우는 것으로 성립한다. 이유는 4-1 에 있다.
+
 ## 4. 도메인별 상세
 
 ### 4-1. 인증 auth
 
-두 엔드포인트 전부 목표다. 지금은 없다.
+엔드포인트는 로그인 하나다. 로그아웃은 백엔드에 두지 않는다.
 
 #### POST /api/auth/login
 
-점주가 이메일과 비밀번호로 로그인한다. FR-AUTH-01.
+점주가 이메일과 비밀번호로 로그인한다. FR-AUTH-01. 근거는 `AuthController.login`, `AuthService.login`, `AuthDto`.
 
 요청
 
@@ -97,21 +104,25 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 }
 ```
 
-응답 200. 토큰은 BFF가 응답에서 꺼내 httpOnly 쿠키로 심는다. 브라우저로 토큰 본문을 넘기지 않는다.
+응답 200. 토큰은 `data.accessToken` 에 실린다. 이 응답을 받는 것은 BFF 다. BFF 가 토큰을 꺼내 httpOnly 쿠키로 심고 나머지만 브라우저로 넘긴다. 브라우저는 토큰 본문을 보지 못한다. 응답 헤더가 아니라 본문에 싣는 것은 OAuth2 토큰 응답의 관례를 따른 것이고, 필드로 두면 타입과 Swagger 스키마가 함께 남는다.
 
 ```json
 {
   "resultCode": "200-1",
   "message": "로그인되었습니다.",
-  "data": { "email": "owner@cafe.com", "role": "ROLE_OWNER" }
+  "data": { "accessToken": "eyJhbGciOiJIUzI1NiJ9...", "email": "owner@cafe.com", "role": "ROLE_OWNER" }
 }
 ```
 
-상태 코드. 200 성공, 401 인증 실패. 실패 메시지는 이메일과 비밀번호 중 어느 쪽이 틀렸는지 알리지 않는다. 계정 존재 여부가 새지 않게 한다. 화면 SC-03.
+상태 코드. 200 성공, 400 이메일이나 비밀번호 누락, 401 인증 실패. 실패 메시지는 이메일과 비밀번호 중 어느 쪽이 틀렸는지 알리지 않는다. 계정 존재 여부가 새지 않게 한다. 화면 SC-03. 걸리는 시간도 맞춘다. 없는 이메일에도 미리 만든 해시와 비교를 한 번 치르므로 응답 시간으로도 계정이 있는지 드러나지 않는다.
 
-#### POST /api/auth/logout
+#### 로그아웃, 백엔드 엔드포인트 없음
 
-로그아웃은 BFF가 쿠키를 지우는 것으로 성립한다. FR-AUTH-09. 응답 200.
+로그아웃은 BFF 가 쿠키를 지우는 것으로 성립한다. FR-AUTH-09. 백엔드에는 엔드포인트를 두지 않는다.
+
+토큰이 stateless 라 서버에는 지울 상태가 없다. 200 만 돌려주는 엔드포인트를 두면 토큰이 폐기된 것처럼 보이는데 실제로는 아무 일도 일어나지 않는다. 점주 전용으로 두면 만료된 토큰을 든 채 로그아웃을 누를 때 로그아웃이 401 로 실패하기까지 한다.
+
+대가로 쿠키를 지워도 이미 복사된 토큰은 만료 시각까지 유효하다. 리프레시 토큰을 두지 않은 FR-AUTH-10 과 같은 선택의 대가다. 되돌리려면 서버가 폐기한 토큰 목록을 들고 있어야 하고, 그 순간 stateless 가 아니게 된다.
 
 ### 4-2. 메뉴 menu
 
@@ -143,7 +154,7 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 
 #### POST /api/menu
 
-메뉴를 등록한다. 목표는 점주 인증이다. FR-MNU-02. 가격은 0원 이상 10,000,000원 이하다. FR-MNU-03. 근거는 `MenuController.createMenu`, `CreateMenuRequestDto`.
+메뉴를 등록한다. 점주 토큰이 필요하다. FR-MNU-02. 가격은 0원 이상 10,000,000원 이하다. FR-MNU-03. 근거는 `MenuController.createMenu`, `CreateMenuRequestDto`.
 
 요청
 
@@ -170,7 +181,7 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 
 #### PUT /api/menu/modify/{id}
 
-메뉴의 이름, 가격, 이미지, 분류를 수정한다. 목표는 점주 인증이다. 근거는 `MenuController.modifyMenu`, `MenuDto.MenuModifyRequest`.
+메뉴의 이름, 가격, 이미지, 분류를 수정한다. 점주 토큰이 필요하다. 근거는 `MenuController.modifyMenu`, `MenuDto.MenuModifyRequest`.
 
 요청
 
@@ -195,11 +206,11 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 
 상태 코드. 200 수정 완료, 400 검증 실패, 404 없는 메뉴, 401 권한 없음.
 
-현재 구현 메모. 요청 본문에 email이 있고, 그 값이 메뉴 등록자와 일치할 때만 수정된다. 불일치면 빈 본문 401이다. 목표에서는 JWT 인가로 대체되어 email이 빠진다. FR-AUTH-05. 없는 메뉴 id는 `MenuController.modifyMenu`가 Optional.get을 직접 불러 NoSuchElementException이 나고 404로 처리된다.
+현재 구현 메모. 요청 본문에 email이 있고, 그 값이 메뉴 등록자와 일치할 때만 수정된다. 불일치면 빈 본문 401이다. 목표에서는 JWT 인가로 대체되어 email이 빠진다. FR-AUTH-05. 이 비교는 토큰 검증을 통과한 뒤에 한 번 더 걸리므로 401 이 두 곳에서 나온다. 토큰이 없으면 보안 필터가 RsData 봉투의 401 을 내고, 토큰은 맞는데 이메일이 다르면 컨트롤러가 빈 본문의 401 을 낸다. 없는 메뉴 id는 `MenuController.modifyMenu`가 Optional.get을 직접 불러 NoSuchElementException이 나고 404로 처리된다.
 
 #### DELETE /api/menu/delete/{menu_id}
 
-메뉴를 삭제한다. 목표는 점주 인증이다. 근거는 `MenuController.deleteMenu`, `DeleteMenuRequestDto`, `MenuService.deleteMenu`.
+메뉴를 삭제한다. 점주 토큰이 필요하다. 근거는 `MenuController.deleteMenu`, `DeleteMenuRequestDto`, `MenuService.deleteMenu`.
 
 **행을 지우지 않고 판매를 중단한다.** FR-MNU-07. `menu.deleted_at`에 시각을 찍는 UPDATE 한 번이 나가고, 그 뒤로 이 메뉴는 목록 조회와 수정과 주문에서 전부 빠진다. 과거 주문은 이 메뉴를 그대로 참조한다.
 
@@ -215,7 +226,7 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 
 이미 판매를 중단한 메뉴를 다시 부르면 401이다. 조회에서 걸러지므로 없는 메뉴와 구분되지 않는다. 응답 코드를 둘로 가르지 않은 이유는 이 엔드포인트가 지금 200과 401 두 갈래만 갖고 있고, 그 계약을 손대는 일은 Phase 3의 인가 작업에 속하기 때문이다.
 
-현재 구현 메모. 요청 본문에 email이 있고, 등록자와 일치할 때만 판매가 중단된다. 불일치면 401 평문 문자열 이메일이 잘못되었거나 삭제 권한이 없습니다다. 목표에서는 JWT 인가로 대체되어 email이 빠진다. 성공 응답은 평문 문자열 삭제되었습니다이며 RsData가 아니다. 소프트 삭제로 바뀐 뒤에도 이 문자열을 바꾸지 않았다. 겉으로 드러나는 계약은 그대로 두고 안쪽 메커니즘만 바꾸는 편이 BFF와 프론트를 건드리지 않아서다.
+현재 구현 메모. 요청 본문에 email이 있고, 등록자와 일치할 때만 판매가 중단된다. 불일치면 401 평문 문자열 이메일이 잘못되었거나 삭제 권한이 없습니다다. 목표에서는 JWT 인가로 대체되어 email이 빠진다. 수정과 마찬가지로 401 이 두 곳에서 나온다. 토큰이 없으면 보안 필터의 RsData 401, 토큰은 맞는데 이메일이 다르면 컨트롤러의 평문 401 이다. 성공 응답은 평문 문자열 삭제되었습니다이며 RsData가 아니다. 소프트 삭제로 바뀐 뒤에도 이 문자열을 바꾸지 않았다. 겉으로 드러나는 계약은 그대로 두고 안쪽 메커니즘만 바꾸는 편이 BFF와 프론트를 건드리지 않아서다.
 
 ### 4-3. 주문 order
 
@@ -330,7 +341,7 @@ status는 CONFIRMED, IN_PROGRESS, READY, COMPLETED, CANCELLED 다섯이다. FR-O
 
 #### GET /api/orders
 
-점주와 바리스타가 볼 전체 주문 목록이다. 목표는 점주 인증이다. FR-KIT-06. 근거는 `OrderController.getOrders`.
+점주와 바리스타가 볼 전체 주문 목록이다. 점주 토큰이 필요하다. FR-KIT-06. 근거는 `OrderController.getOrders`.
 
 쿼리 파라미터. status는 선택이다. 지정하면 그 상태만, 생략하면 전체를 준다. 결과가 비어도 200과 빈 배열이다. FR-KIT-03. 정렬은 주문 시각 오름차순으로, 먼저 들어온 주문이 먼저다. FR-KIT-02.
 
@@ -357,11 +368,11 @@ status는 CONFIRMED, IN_PROGRESS, READY, COMPLETED, CANCELLED 다섯이다. FR-O
 }
 ```
 
-상태 코드. 200 항상, 400 status 값이 OrderStatus로 변환되지 않을 때. 이 엔드포인트는 이미 RsData로 감싸 내려온다.
+상태 코드. 200 항상, 400 status 값이 OrderStatus로 변환되지 않을 때, 401 토큰 없음. 이 엔드포인트는 이미 RsData로 감싸 내려온다.
 
 #### PATCH /api/order/{orderId}/status
 
-점주가 주문 상태를 다음 단계로 전이시킨다. 목표는 점주 인증이다. 근거는 `OrderController.changeStatus`, `OrderDto.ChangeStatusRequest`.
+점주가 주문 상태를 다음 단계로 전이시킨다. 점주 토큰이 필요하다. 근거는 `OrderController.changeStatus`, `OrderDto.ChangeStatusRequest`.
 
 전이 규칙은 Order 엔티티가 소유한다. FR-ORD-04. 정상 흐름은 CONFIRMED, IN_PROGRESS, READY, COMPLETED다. FR-ORD-01. CONFIRMED와 IN_PROGRESS에서만 CANCELLED로 갈 수 있다. FR-ORD-02. 허용되지 않은 전이는 409로 거부되고 상태는 그대로다. FR-ORD-03.
 
@@ -415,7 +426,7 @@ quantity는 증감이 아니라 절대 수량이다. 점주가 아는 것은 몇
 
 재고 행이 없는 메뉴에 이 엔드포인트를 부르면 만들어 주지 않고 500이다. 관리 API가 어긋난 데이터를 조용히 정상으로 바꾸면 어떤 경로가 그 상태를 만들었는지 영영 드러나지 않는다. `docs/ADR/ADR-0003`의 판단이 조정 경로에도 그대로 적용된다.
 
-401은 아직 없다. 인증이 붙지 않아 지금은 누구나 이 엔드포인트를 부를 수 있다. Phase 3이다.
+점주 토큰이 필요하다. 토큰 없이 부르면 401 이다. 재고 행이 없을 때 일부러 내는 500 도 토큰을 통과한 뒤의 일이다.
 
 CORS 허용 메서드에 PATCH가 없는 것은 이 엔드포인트에 영향을 주지 않는다. 브라우저는 3000의 BFF 라우트를 부르고 그건 same-origin이라 프리플라이트가 없으며, BFF에서 8080으로 나가는 요청은 서버 간 호출이라 동일 출처 정책이 적용되지 않는다. CORS는 브라우저가 8080을 직접 부를 때만 문제가 된다.
 
@@ -423,7 +434,7 @@ CORS 허용 메서드에 PATCH가 없는 것은 이 엔드포인트에 영향을
 
 #### POST /api/upload/image
 
-점주가 메뉴 이미지를 올린다. 목표는 점주 인증이다. FR-FILE-04. 근거는 `FileUploadController.uploadImage`.
+점주가 메뉴 이미지를 올린다. 점주 토큰이 필요하다. FR-FILE-04. 근거는 `FileUploadController.uploadImage`.
 
 요청. multipart form-data. 필드 이름은 file이다. 이미지만 허용하고 크기는 5MB 이하다. FR-FILE-02.
 
@@ -439,9 +450,9 @@ CORS 허용 메서드에 PATCH가 없는 것은 이 엔드포인트에 영향을
 
 저장 파일명은 UUID다. FR-FILE-03. 응답 imageUrl은 호스트 없는 상대경로다. 배포 주소가 DB에 박히지 않게 한다. FR-FILE-07.
 
-상태 코드. 200 성공, 400 빈 파일이나 이미지가 아닌 파일이나 5MB 초과, 500 저장 중 오류. 오류 응답은 {message} 형태다.
+상태 코드. 200 성공, 400 빈 파일이나 이미지가 아닌 파일이나 5MB 초과, 401 토큰 없음, 500 저장 중 오류. 오류 응답은 {message} 형태다. 401 만 보안 필터가 내므로 RsData 봉투다.
 
-현재 구현 메모. 응답이 RsData가 아니라 Map이다. imageUrl, filename, originalFilename을 맨 위에 담는다. 인증은 아직 없다.
+현재 구현 메모. 응답이 RsData가 아니라 Map이다. imageUrl, filename, originalFilename을 맨 위에 담는다. 인증은 붙었지만 지금 화면은 BFF 를 건너뛰고 8080 을 토큰 없이 직접 부르므로 화면의 업로드는 401 을 받는다. 업로드가 BFF 를 거치게 바뀔 때 함께 풀린다.
 
 ## 5. BFF 프록시 계층
 
@@ -476,7 +487,7 @@ BFF는 백엔드에 닿기 전에 필수 필드와 값 범위를 먼저 본다. 
 
 재고 조정에서 0을 falsy로 걸러 내지 않는 것이 중요하다. 0은 품절 처리를 뜻하는 정상 값이라 `!body.quantity` 형태로 검사하면 품절 처리가 통째로 400이 되고, 그 사실이 오류 메시지에 드러나지도 않는다.
 
-현재 구현 메모. 목표에서 BFF는 로그인 응답의 토큰을 httpOnly 쿠키로 심고, 점주 요청에 그 쿠키를 실어 백엔드로 보낸다. FR-AUTH-08. 지금은 인증 흐름이 없어 BFF가 토큰을 다루지 않는다. 또한 모든 라우트가 백엔드 주소를 하드코딩한다.
+현재 구현 메모. 목표에서 BFF는 로그인 응답의 토큰을 httpOnly 쿠키로 심고, 점주 요청마다 쿠키에서 꺼낸 토큰을 Authorization 헤더에 Bearer 로 실어 백엔드로 보낸다. FR-AUTH-08. 백엔드는 쿠키를 읽지 않는다. 지금은 BFF가 토큰을 다루지 않는다. 백엔드가 점주 API 를 잠갔으므로 메뉴 등록, 수정, 삭제와 재고 조정 라우트는 백엔드의 401 을 그대로 브라우저로 돌려준다. 모든 라우트가 백엔드 상태 코드를 그대로 넘기기 때문이다. 또한 모든 라우트가 백엔드 주소를 하드코딩한다.
 
 ## 6. 현재 구현과 목표의 차이 요약
 
@@ -485,7 +496,7 @@ BFF는 백엔드에 닿기 전에 필수 필드와 값 범위를 먼저 본다. 
 | 주제 | 목표 | 현재 | 단계 |
 | --- | --- | --- | --- |
 | 동시성 | 마지막 한 잔 정확히 한 명 성공 | 세 전략 모두 만족, 실측 수치와 ADR 남음 | Phase 2 |
-| 인증 | JWT와 httpOnly 쿠키, ROLE_OWNER 보호 | 없음, 본문 이메일 비교 | Phase 3 |
+| 인증 | JWT와 httpOnly 쿠키, ROLE_OWNER 보호 | 백엔드는 토큰 검증과 401 까지, BFF 쿠키는 아직 | Phase 3 |
 | 인가 필드 | 서버 신원 기반, 본문에서 email 제거 | 메뉴 수정과 삭제 본문에 email | Phase 3 |
 | 손님 주문 조회 | 대기번호로 자기 주문만 | 이메일로 통째 조회 | Phase 3 |
 | 응답 봉투 | RsData로 통일 | 평문, 맨 DTO, Map 혼재 | Phase 3 |
