@@ -172,8 +172,6 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
         assertThat(커밋된주문수())
                 .as("커밋된 주문 행 수는 성공 건수와 같아야 한다. %s", 결과.요약())
                 .isEqualTo(시작재고);
-
-        재시도를_검사한다(결과);
     }
 
     /**
@@ -182,6 +180,12 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
      * 이 훅이 없으면 재시도 열이 아무에게도 검사받지 않는다. 그러면 파사드 배선이 끊겨
      * 재시도가 영영 0 인 채로도 나머지 단언이 전부 초록일 수 있다. 비관적 락에서는
      * 실제로 0 이 정답이라 그 사고가 드러나지 않는다.
+     *
+     * 부르는 자리는 전원이 성공해야 하는 조건의 측정 판이다. 처음에는 마지막 한 잔 테스트가
+     * 불렀는데, 재고 3 에서는 세는 것이 성공한 세 스레드의 재시도뿐이라 그 셋이 충돌 없이
+     * 끝나는 판이 실제로 나왔다. 반복해 재 보니 열다섯 판 중 적어도 둘이 0 이었고, 그런 판이
+     * 걸리면 락이 멀쩡한데도 낙관적 락 쪽 단언이 빨개진다. 전원이 성공해야 하면 열 스레드가
+     * 모두 커밋해야 하므로 충돌이 판마다 여러 번 난다. 같은 측정에서 열다섯 판 모두 15 번 이상이었다.
      */
     protected abstract void 재시도를_검사한다(ConcurrencyResult 결과);
 
@@ -192,7 +196,7 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
     }
 
     @Test
-    @DisplayName("재고 100 인 한 행에 열 스레드가 몰려 전원이 성공해야 하는 경쟁을 반복해 재고 수치를 출력한다")
+    @DisplayName("재고 100 인 한 행에 열 스레드가 몰려 전원이 성공해야 하는 경쟁을 반복해 측정하고 전략별 재시도 기대를 확인한다")
     void 전원이_성공해야_하는_경쟁을_잰다() {
         반복해서_잰다(new 경쟁조건("한 행 재고 100", 1, 100));
     }
@@ -246,6 +250,11 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
         boolean 경쟁하는가() {
             return 행당스레드수() > 1;
         }
+
+        /** 한 행에 여럿이 몰리는데 모두 커밋해야 하는 조건. 충돌이 판마다 확실히 난다. */
+        boolean 전원이_성공하는_경쟁인가() {
+            return 경쟁하는가() && 기대성공() == 스레드수;
+        }
     }
 
     /**
@@ -280,11 +289,10 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
     /**
      * 측정이 증명과 같은 무대에서 돌았는지를 판마다 확인한다.
      *
-     * 경쟁하는 조건에서는 전략별 재시도 훅을 부르지 않는다. 낙관적 락 쪽 훅은 재시도가 0 보다
-     * 크다는 확률적 단언이라 판 수만큼 부르면 흔들릴 기회도 그만큼 는다. 그 배선 확인은 마지막
-     * 한 잔 테스트가 맡고, 여기서 재시도는 단언할 대상이 아니라 재서 찍을 대상이다.
-     * 경쟁이 없는 조건의 재시도 0 은 다르다. 같은 행에 닿는 스레드가 없어 충돌이 일어날 수
-     * 없으므로 세 전략 모두에 단언한다.
+     * 재시도는 충돌 여부가 확실한 곳에서만 단언한다. 경쟁이 없는 조건에서는 같은 행에 닿는 스레드가
+     * 없어 충돌이 일어날 수 없으므로 세 전략 모두 0 이다. 전원이 성공해야 하는 조건에서는 충돌이
+     * 판마다 여러 번 나므로 전략별 기대를 훅으로 묻는다. 마지막 한 잔 조건에서는 재시도를 재서
+     * 찍기만 한다. 성공한 스레드가 충돌 없이 끝나는 판이 실제로 나오기 때문이다.
      */
     private void 불변식을_단언한다(경쟁조건 조건, int 판, List<Menu> 무대, ConcurrencyResult 결과) {
         String 어디 = "%s %d 판째. %s".formatted(조건.이름(), 판, 결과.요약());
@@ -311,6 +319,8 @@ public abstract class AbstractOrderStockConcurrencyTest extends AbstractConcurre
             assertThat(결과.재시도())
                     .as("같은 행에 닿는 스레드가 없으니 충돌도 없어야 한다. %s", 어디)
                     .isZero();
+        } else if (조건.전원이_성공하는_경쟁인가()) {
+            재시도를_검사한다(결과);
         }
     }
 
