@@ -124,7 +124,7 @@ public class ConcurrencyHarnessTest extends AbstractConcurrencyTest {
                 .as("실패한 스레드의 시도가 섞이면 45 가 된다. %s", 결과.요약())
                 .isEqualTo(25);
 
-        // 요약에 재시도가 실려야 빨간불 출력 한 줄을 PR 비교표로 옮길 수 있다.
+        // 요약에 재시도가 실려야 빨간불이 난 판의 재시도를 단언 메시지에서 바로 읽을 수 있다.
         assertThat(결과.요약()).contains("재시도 25");
     }
 
