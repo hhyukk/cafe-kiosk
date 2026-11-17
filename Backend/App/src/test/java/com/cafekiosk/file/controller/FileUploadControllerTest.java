@@ -1,5 +1,6 @@
 package com.cafekiosk.file.controller;
 
+import com.cafekiosk.auth.jwt.AccessTokenIssuer;
 import com.cafekiosk.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static com.cafekiosk.support.OwnerToken.점주_토큰;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -35,6 +37,9 @@ public class FileUploadControllerTest extends AbstractIntegrationTest {
     @Autowired
     private MockMvc mvc;
 
+    @Autowired
+    private AccessTokenIssuer accessTokenIssuer;
+
     @Test
     @DisplayName("이미지를 업로드하면 호스트가 없는 상대경로 URL 을 돌려준다")
     void should_업로드_응답_URL은_호스트를_포함하지_않는다() throws Exception {
@@ -45,7 +50,7 @@ public class FileUploadControllerTest extends AbstractIntegrationTest {
                 "가짜 이미지 바이트".getBytes()
         );
 
-        mvc.perform(multipart("/api/upload/image").file(file))
+        mvc.perform(multipart("/api/upload/image").file(file).with(점주_토큰(accessTokenIssuer)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.imageUrl").value(startsWith("/uploads/")))
                 // UUID + 확장자. http:// 나 localhost 가 섞여 들어오면 여기서 걸린다.

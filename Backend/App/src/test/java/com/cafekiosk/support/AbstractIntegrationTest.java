@@ -6,6 +6,9 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import java.security.SecureRandom;
+import java.util.Base64;
+
 /**
  * 통합 테스트 베이스 클래스.
  * extends AbstractIntegrationTest 만으로 PostgreSQL 컨테이너에 연결된 Spring 컨텍스트가 준비된다.
@@ -47,6 +50,16 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * postgres::getJdbcUrl 형태(Supplier)를 사용하는 이유는 컨테이너가 완전히 기동된 후
  * URL 이 확정된 다음에 값을 읽어가도록 하기 위해서다.
  *
+ * ── JWT 서명 키도 여기서 넣는다 ──────────────────────────────────────────────────
+ *
+ * application.yml 은 키를 환경 변수 JWT_SECRET 에서 읽는데 CI 에는 그 변수가 없다.
+ * 그렇다고 application-test.yml 에 키를 적으면 안 된다. 그 파일은 src/main/resources 에 있어
+ * jar 에 함께 실리고, 그러면 test 프로필로 띄운 서버가 레포를 본 누구나 찍을 수 있는 토큰을
+ * 받아 준다. 그래서 JVM 마다 난수로 새로 만든다. 커밋되는 키가 없다.
+ *
+ * 테스트가 키 값을 알 필요는 없다. 토큰이 필요하면 AccessTokenIssuer 빈이나 JwtEncoder 빈에
+ * 받아 오면 같은 키로 서명된다. support/OwnerToken 이 그렇게 한다.
+ *
  * ── @AutoConfigureMockMvc / @Transactional 을 여기에 두지 않는 이유 ──────────────
  *
  * 모든 통합 테스트가 MockMvc 를 필요로 하지 않는다.
@@ -75,6 +88,9 @@ public abstract class AbstractIntegrationTest {
 
     static final PostgreSQLContainer<?> postgres;
 
+    // 컨테이너와 같은 이유로 static 이다. 컨텍스트가 여럿 떠도 한 JVM 안에서는 같은 키를 쓴다
+    static final String jwtSecret = newJwtSecret();
+
     static {
         postgres = new PostgreSQLContainer<>("postgres:16");
         postgres.start();
@@ -86,5 +102,17 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
+    }
+
+    @DynamicPropertySource
+    static void overrideJwtSecret(DynamicPropertyRegistry registry) {
+        registry.add("cafekiosk.auth.jwt.secret", () -> jwtSecret);
+    }
+
+    // JwtConfig 가 요구하는 하한과 같은 32바이트다
+    private static String newJwtSecret() {
+        byte[] key = new byte[32];
+        new SecureRandom().nextBytes(key);
+        return Base64.getEncoder().encodeToString(key);
     }
 }

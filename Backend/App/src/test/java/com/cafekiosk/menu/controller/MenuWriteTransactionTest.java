@@ -1,5 +1,6 @@
 package com.cafekiosk.menu.controller;
 
+import com.cafekiosk.auth.jwt.AccessTokenIssuer;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
 import com.cafekiosk.stock.entity.Stock;
@@ -16,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.cafekiosk.support.OwnerToken.점주_토큰;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -58,6 +60,9 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
     @Autowired
     private StockRepository stockRepository;
 
+    @Autowired
+    private AccessTokenIssuer accessTokenIssuer;
+
     private final List<Long> 만든메뉴 = new ArrayList<>();
 
     @AfterEach
@@ -84,6 +89,7 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
         // BFF 가 보내는 필드명 그대로다. frontend/src/app/api/menu/route.ts 의 POST 핸들러 참고
         mvc.perform(
                         post("/api/menu")
+                                .with(점주_토큰(accessTokenIssuer))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {
@@ -116,6 +122,7 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
     void 메뉴생성이_재고행도_함께_만든다() throws Exception {
         mvc.perform(
                         post("/api/menu")
+                                .with(점주_토큰(accessTokenIssuer))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {
@@ -153,6 +160,7 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
 
         mvc.perform(
                         delete("/api/menu/delete/" + menu.getId())
+                                .with(점주_토큰(accessTokenIssuer))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {
@@ -189,8 +197,12 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
     void 등록자가_아니면_메뉴가_지워지지_않는다() throws Exception {
         Menu menu = 메뉴를_심는다("남의 뉴욕치즈케이크", "example@example.com");
 
+        // 토큰은 맞게 싣는다. 이 401 은 보안 필터가 아니라 컨트롤러의 이메일 비교가 내야 한다.
+        // 토큰 없이 보내면 필터가 먼저 401 을 내서 이 테스트가 무엇을 막았는지 알 수 없게 된다.
+        // 아래 handler 단언이 요청이 컨트롤러까지 갔다는 것을 확인한다
         mvc.perform(
                         delete("/api/menu/delete/" + menu.getId())
+                                .with(점주_토큰(accessTokenIssuer))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {

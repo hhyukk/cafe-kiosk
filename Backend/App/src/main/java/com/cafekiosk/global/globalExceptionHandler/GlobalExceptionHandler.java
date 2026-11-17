@@ -1,5 +1,6 @@
 package com.cafekiosk.global.globalExceptionHandler;
 
+import com.cafekiosk.auth.exception.InvalidCredentialsException;
 import com.cafekiosk.global.rsData.RsData;
 import com.cafekiosk.order.exception.InvalidOrderStatusTransitionException;
 import com.cafekiosk.stock.exception.OutOfStockException;
@@ -8,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -22,6 +24,7 @@ import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 import static org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE;
+import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
 @ControllerAdvice
 @RequiredArgsConstructor
@@ -68,6 +71,37 @@ public class GlobalExceptionHandler {
                         ex.getMessage()
                 ),
                 BAD_REQUEST
+        );
+    }
+
+    // 401 : UNAUTHORIZED. 점주 API 를 토큰 없이, 또는 위조되거나 만료된 토큰으로 부른 경우.
+    //       이 예외는 컨트롤러가 아니라 보안 필터에서 터지므로 DispatcherServlet 을 거치지 않는다.
+    //       RsDataAuthenticationEntryPoint 가 리졸버로 넘겨줘야 여기 닿는다. 이유는 그쪽 주석에 있다.
+    //
+    //       토큰이 없는 것과 만료된 것을 메시지로 가르지 않는다. 어느 쪽이든 점주가 할 일은 다시
+    //       로그인하는 것 하나다. 토큰이 깨졌다는 사실은 WWW-Authenticate 헤더의 오류 코드에 남는다.
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<RsData<Void>> handle(AuthenticationException ex) {
+        return new ResponseEntity<>(
+                new RsData<>(
+                        "401-1",
+                        "로그인이 필요합니다."
+                ),
+                UNAUTHORIZED
+        );
+    }
+
+    // 401 : UNAUTHORIZED. 로그인 실패. 이메일이 없는 것과 비밀번호가 틀린 것을 같은 응답으로 묶는다.
+    //       어느 쪽인지 알려 주면 계정이 있는지가 응답으로 샌다. 위 핸들러와 예외를 나눈 이유는
+    //       InvalidCredentialsException 주석에 있다.
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<RsData<Void>> handle(InvalidCredentialsException ex) {
+        return new ResponseEntity<>(
+                new RsData<>(
+                        "401-1",
+                        "이메일 또는 비밀번호가 올바르지 않습니다."
+                ),
+                UNAUTHORIZED
         );
     }
 

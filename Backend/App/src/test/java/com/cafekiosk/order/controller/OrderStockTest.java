@@ -1,5 +1,6 @@
 package com.cafekiosk.order.controller;
 
+import com.cafekiosk.auth.jwt.AccessTokenIssuer;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
 import com.cafekiosk.order.dto.OrderDto;
@@ -23,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.cafekiosk.support.OwnerToken.점주_토큰;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -82,6 +84,9 @@ public class OrderStockTest extends AbstractIntegrationTest {
 
     @Autowired
     private OrderService orderService;
+
+    @Autowired
+    private AccessTokenIssuer accessTokenIssuer;
 
     // 이 클래스가 쓰는 이메일 전부. 성공했든 롤백됐든 정리 대상에 넣는다.
     private static final List<String> 사용하는이메일 = List.of(
@@ -201,6 +206,7 @@ public class OrderStockTest extends AbstractIntegrationTest {
         long orderId = orderRepository.findByCustomerEmail(email).get(0).getId();
 
         mvc.perform(patch("/api/order/{orderId}/status", orderId)
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"CANCELLED\"}"))
                 .andDo(print())
@@ -211,6 +217,7 @@ public class OrderStockTest extends AbstractIntegrationTest {
         // 이미 취소된 주문은 Order 의 상태머신이 막는다. 서비스가 재고 복구 앞에
         // 별도 방어를 두지 않아도 재고가 두 번 늘지 않는 이유가 이것이다
         mvc.perform(patch("/api/order/{orderId}/status", orderId)
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"CANCELLED\"}"))
                 .andDo(print())
