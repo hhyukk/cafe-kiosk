@@ -31,7 +31,8 @@ public class PessimisticOrderStockConcurrencyTest extends AbstractOrderStockConc
      * 기다리는 비용은 소요시간에 들어가지 재시도 횟수에 들어가지 않는다.
      *
      * 이 0 이 낙관적 락 쪽 숫자와 나란히 놓일 때 두 전략의 성격 차이가 드러난다.
-     * 경쟁이 잦으면 비관적, 드물면 낙관적이라는 말의 근거가 이 두 줄이다. NFR-CON-07.
+     * 전원이 성공해야 하는 조건에서 낙관적 락은 주문 열 건에 재시도를 스무 번 안팎 썼고,
+     * 이쪽은 같은 결과를 재시도 없이 냈다. 기다린 시간을 합쳐도 이쪽이 빨랐다.
      */
     @Override
     protected void 재시도를_검사한다(ConcurrencyResult 결과) {
