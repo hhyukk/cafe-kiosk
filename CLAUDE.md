@@ -35,13 +35,13 @@
 순서를 지켜야 한다. `docker-compose.yml`이 `.env`의 `DB_USERNAME`과 `DB_PASSWORD`를 참조하므로 `.env`가 먼저 있어야 한다.
 
 ```bash
-cd Backend/App && cp .env.example .env   # DB_PASSWORD 채우기
+cd Backend/App && cp .env.example .env   # DB_PASSWORD, JWT_SECRET, OWNER_PASSWORD 채우기
 docker compose up -d                     # PostgreSQL 16, Redis 7
 ./gradlew bootRun                        # 8080
 cd ../../frontend && npm run dev         # 3000
 ```
 
-API 문서는 http://localhost:8080/swagger-ui.html 이다. Redis 컨테이너는 `--cafekiosk.stock.lock-strategy=distributed`로 띄울 때만 쓴다. 테스트는 이 컨테이너를 쓰지 않는다. `DistributedOrderStockConcurrencyTest`가 Testcontainers로 자기 Redis를 띄운다.
+API 문서는 http://localhost:8080/swagger-ui.html 이다. 점주 API는 `POST /api/auth/login`이 준 `data.accessToken`을 Swagger의 Authorize에 넣고 부른다. 계정은 dev 기동 때 `.env`의 `OWNER_EMAIL`과 `OWNER_PASSWORD`로 심긴다. Redis 컨테이너는 `--cafekiosk.stock.lock-strategy=distributed`로 띄울 때만 쓴다. 테스트는 이 컨테이너를 쓰지 않는다. `DistributedOrderStockConcurrencyTest`가 Testcontainers로 자기 Redis를 띄운다.
 
 ## 설계 규칙: 불변식은 엔티티가 소유한다
 
@@ -60,6 +60,8 @@ API 문서는 http://localhost:8080/swagger-ui.html 이다. Redis 컨테이너�
 - **락 전략은 `StockLockStrategy` 구현이 소유하고 프로퍼티로 갈린다.** `cafekiosk.stock.lock-strategy` 값에 `@ConditionalOnProperty`가 하나씩 대응하고, 조건은 각 구현 파일이 자기 것을 들고 있다. 전략을 더할 때 고치는 파일이 없어야 하므로 한곳에 모은 팩토리를 두지 않는다. `OrderService`는 어느 전략이 주입됐는지 모른 채 `acquire`만 부른다.
 - **낙관적 락 재시도는 `OrderFacade`가 소유하고, 거기에 `@Transactional`을 붙이지 않는다.** 버전 충돌은 트랜잭션이 롤백돼야 드러나므로 재시도는 죽은 트랜잭션 밖 새 트랜잭션에서 일어나야 한다. NFR-CON-05. 붙이는 순간 재시도가 무의미해지고, 그 사실이 예외가 아니라 조용한 실패로 나타난다. 컨트롤러에도 붙이지 않는 이유가 같다. 재고에 닿는 경로를 새로 만들면 서비스가 아니라 파사드를 거치게 한다.
 - **손님 행은 주문 트랜잭션과 따로 커밋된다.** `OrderService.findOrCreateCustomer`가 바깥에서 먼저 찾고, 없을 때만 `CustomerService.create`를 `REQUIRES_NEW`로 부른 뒤, 성공이든 유니크 충돌이든 다시 읽는다. 주문 트랜잭션 안에서 `customerRepository.save`를 부르지 않는다. 같은 이메일 첫 주문 둘이 겹치면 PostgreSQL이 위반 난 트랜잭션을 abort 시켜 주문째 죽는다. NFR-CON-06. 대가로 주문이 거절돼도 손님 행은 남는다.
+- **비밀번호 해시는 `Owner` 생성자가 만든다.** 평문과 `PasswordEncoder`를 받아 그 자리에서 해시하고, 해시를 받는 생성자는 두지 않는다. 가격 스냅샷과 같은 이유로 평문이 들어갈 경로 자체를 없앤다.
+- **경로별 권한은 `global/security/SecurityConfig` 한곳이 정하고, 잠긴 것이 기본이다.** 손님에게 여는 경로만 공개 목록에 적고 나머지는 전부 ROLE_OWNER다. 손님 엔드포인트를 새로 만들면 공개 목록에 메서드까지 맞춰 더한다. 잊으면 401이 나며 곧바로 드러난다. 컨트롤러와 서비스는 호출자가 누구인지 따지지 않는다.
 
 ## 백엔드 규약
 
@@ -71,12 +73,13 @@ com.cafekiosk
 ├── order/    controller, facade, service, repository, entity, dto, exception
 ├── stock/    controller, service, repository, entity, lock, dto, exception
 ├── file/     controller
-└── global/   config, globalExceptionHandler, initData, jpa, rsData, springDoc
+├── auth/     controller, service, repository, entity, dto, exception, jwt
+└── global/   config, globalExceptionHandler, initData, jpa, rsData, security, springDoc
 ```
 
 새 도메인은 최상위에 feature 패키지를 만들고 그 안에 레이어를 둔다. 여러 feature가 공유하는 것만 `global/`로 간다.
 
-응답은 `global/rsData/RsData`로 감싼다. `record RsData<T>(String resultCode, String message, T data)` 형태다. 예외에서 HTTP로의 매핑은 `GlobalExceptionHandler`가 하며, 컨트롤러에서 try/catch로 상태 코드를 만들지 않는다.
+응답은 `global/rsData/RsData`로 감싼다. `record RsData<T>(String resultCode, String message, T data)` 형태다. 예외에서 HTTP로의 매핑은 `GlobalExceptionHandler`가 하며, 컨트롤러에서 try/catch로 상태 코드를 만들지 않는다. 보안 필터에서 터지는 401도 `RsDataAuthenticationEntryPoint`가 MVC의 예외 리졸버로 넘겨 거기서 만든다.
 
 포매터와 린터는 없다. Checkstyle도 Spotless도 도입하지 않았으므로 주변 코드 스타일에 맞춘다.
 
@@ -90,8 +93,11 @@ com.cafekiosk
 - JUnit 5와 AssertJ. `@DisplayName`은 한국어 문장, 메서드명은 `should_정상흐름_전이는_성공한다` 스타일.
 - `./gradlew test`에는 Docker 데몬이 떠 있어야 한다.
 - **`@Transactional` 테스트라도 주문을 만들면 손님 행은 롤백되지 않는다.** `CustomerService`가 따로 커밋하기 때문이다. `@AfterEach`는 테스트 트랜잭션 안에서 돌아 지운 것까지 롤백되므로 `@AfterTransaction`에서 지운다. `OrderControllerTest` 참고.
+- **점주 API를 부르는 MockMvc 요청에만 `.with(점주_토큰(accessTokenIssuer))`로 실제 토큰을 싣는다.** `support/OwnerToken` 참고. 손님 API 요청에는 싣지 않아야 그 호출들이 손님 API가 열려 있다는 것을 덤으로 지킨다. `@WithMockUser`를 쓰지 않는다. 토큰 검증을 건너뛰고 메서드 전체를 인증된 상태로 만든다.
+- **MockMvc를 `MockMvcBuilders`로 손으로 만들지 않는다.** 보안 필터가 빠져 점주 API가 토큰 없이 200을 낸다. `@AutoConfigureMockMvc`가 만든 것을 주입받는다.
+- JWT 서명 키는 `AbstractIntegrationTest`가 JVM마다 난수로 넣는다. `application-test.yml`에 키를 적지 않는다. 그 파일은 `src/main/resources`에 있어 jar에 실린다.
 
-회귀 방지선이 다섯 있다. `OrderControllerTest`의 가격 스냅샷 테스트는 조회 경로가 `orderItem.getOrderPrice` 대신 `getMenu().getMenuPrice`를 읽는 순간 잡아낸다. `FileUploadControllerTest`는 업로드 응답 URL에 호스트가 붙는 순간 잡아낸다. `MenuWriteTransactionTest`는 메뉴 생성과 삭제가 readOnly 트랜잭션에 갇혀 SQL이 조용히 사라지는 순간, 그리고 메뉴 등록이 재고 행을 함께 만들지 않게 되는 순간 잡아낸다. `OrderStockTest`는 재고 부족 주문이 부분 차감을 남기는 순간 잡아낸다. `StockControllerTest`는 재고 조정이 준영속 엔티티 위에서 사라져 200만 나가는 순간 잡아낸다.
+회귀 방지선이 여섯 있다. `OrderControllerTest`의 가격 스냅샷 테스트는 조회 경로가 `orderItem.getOrderPrice` 대신 `getMenu().getMenuPrice`를 읽는 순간 잡아낸다. `FileUploadControllerTest`는 업로드 응답 URL에 호스트가 붙는 순간 잡아낸다. `MenuWriteTransactionTest`는 메뉴 생성과 삭제가 readOnly 트랜잭션에 갇혀 SQL이 조용히 사라지는 순간, 그리고 메뉴 등록이 재고 행을 함께 만들지 않게 되는 순간 잡아낸다. `OrderStockTest`는 재고 부족 주문이 부분 차감을 남기는 순간 잡아낸다. `StockControllerTest`는 재고 조정이 준영속 엔티티 위에서 사라져 200만 나가는 순간 잡아낸다. `SecurityConfigTest`는 점주 API가 토큰 없이 열리거나 손님 경로가 잠기거나 401이 RsData 봉투를 잃는 순간 잡아낸다.
 
 **검증 대상이 트랜잭션 경계이면 테스트에 `@Transactional`을 붙이지 않는다.** 붙이는 순간 테스트가 read-write 트랜잭션을 먼저 열어, 서비스의 `readOnly = true`가 거기 참여만 하고 속성이 무시된다. 잡으려던 결함이 통째로 가려진다. `MenuWriteTransactionTest`가 `@Transactional` 없이 서서 만든 행을 `@AfterEach`로 직접 지우는 이유가 이것이다.
 
@@ -126,7 +132,8 @@ Next 16이라 라우트 핸들러의 `params`는 `Promise`다. `context: { param
 | 함정 | 위치 |
 | --- | --- |
 | dev 프로필은 재기동마다 스키마를 드롭하고 시드를 다시 심는다. `ddl-auto: create` | `application.yml` |
-| 인가가 요청 본문 이메일 문자열 비교뿐이다. 이메일만 알면 남의 메뉴를 고칠 수 있다 | `menu/service/MenuService.java` |
+| 메뉴 수정과 삭제가 토큰을 확인한 뒤에도 요청 본문 이메일을 등록자와 다시 비교하고, 등록자도 본문 이메일로 기록한다 | `menu/service/MenuService.java` |
+| BFF가 토큰을 다루지 않아 화면의 메뉴 등록, 수정, 삭제, 이미지 업로드가 401을 받는다. 그동안 메뉴 관리는 Swagger로 한다 | `frontend/src/app/api/menu/`, `page.tsx` |
 | 응답 봉투가 섞여 있다. 맨 배열, 평문 문자열, Map, 봉투 없는 DTO. 새 코드는 `RsData`로 통일한다 | `MenuController`, `FileUploadController` |
 | CORS 허용 메서드에 PATCH가 없다. 브라우저가 상태 변경을 직접 부르면 막힌다 | `global/config/WebConfig.java` |
 | `page.tsx`가 1230줄 단일 클라이언트 컴포넌트다. 국소 수정만 하고 전체를 다시 쓰지 않는다 | `frontend/src/app/page.tsx` |

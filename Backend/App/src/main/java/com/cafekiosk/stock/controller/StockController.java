@@ -28,11 +28,12 @@ public class StockController {
             summary = "재고 조정 (점주)",
             description = "특정 메뉴의 재고를 요청한 수량으로 맞춥니다. 증감이 아니라 절대값입니다. "
                     + "0 을 보내면 품절 처리가 되고 음수는 400 으로 거부됩니다. "
-                    + "인증은 아직 붙지 않아 지금은 누구나 부를 수 있습니다."
+                    + "점주 토큰이 필요합니다."
     )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "조정 완료"),
             @ApiResponse(responseCode = "400", description = "수량 누락이나 음수"),
+            @ApiResponse(responseCode = "401", description = "토큰이 없거나 위조되었거나 만료됨"),
             @ApiResponse(responseCode = "404", description = "없는 메뉴이거나 판매가 중단된 메뉴")
     })
     // 컨트롤러에 @Transactional 을 붙이지 않는다. NFR-CON-05.

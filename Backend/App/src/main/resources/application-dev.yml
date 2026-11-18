@@ -3,3 +3,12 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+
+cafekiosk:
+  auth:
+    # dev 프로필이 기동할 때 BaseInitData 가 심는 점주 계정. .env 에서 읽는다.
+    # 비밀번호를 코드에 박지 않는 이유는 지금 기본 프로필이 dev 라서다. 프로필을 가르기 전에
+    # 그대로 배포되면 레포에 적힌 비밀번호로 누구나 점주가 된다.
+    seed-owner:
+      email: ${OWNER_EMAIL}
+      password: ${OWNER_PASSWORD}

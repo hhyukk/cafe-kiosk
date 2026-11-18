@@ -39,8 +39,8 @@ public class StockService {
      * 옮기기 때문이다. 응답 메시지는 핸들러가 고정 문자열로 덮으므로 여기 적는 menuId 는
      * 로그와 테스트에만 남는다.
      *
-     * 인증은 아직 없다. 지금은 누구나 이 메서드에 닿을 수 있고, 점주만 부를 수 있게 되는 것은
-     * Spring Security 가 붙는 단계다.
+     * 점주만 부를 수 있다는 규칙은 이 메서드가 아니라 SecurityConfig 의 경로 표가 갖는다.
+     * 이 메서드는 누가 불렀는지 모른다. 권한 판단과 재고 규칙이 한 메서드에 섞이지 않게 한다.
      */
     @Transactional
     public StockDto.AdjustResponse adjust(long menuId, int quantity) {

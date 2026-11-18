@@ -1,5 +1,6 @@
 package com.cafekiosk.menu.controller;
 
+import com.cafekiosk.auth.jwt.AccessTokenIssuer;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
 import com.cafekiosk.menu.service.MenuService;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+import static com.cafekiosk.support.OwnerToken.점주_토큰;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -36,6 +38,9 @@ public class MenuControllerTest extends AbstractIntegrationTest {
 
     @Autowired
     private StockRepository stockRepository;
+
+    @Autowired
+    private AccessTokenIssuer accessTokenIssuer;
 
     private Menu 재고있는메뉴;
     private Menu 품절메뉴;
@@ -97,6 +102,7 @@ public class MenuControllerTest extends AbstractIntegrationTest {
         ResultActions resultActions = mvc
                 .perform(
                         put("/api/menu/modify/" + menuId)
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -130,6 +136,7 @@ public class MenuControllerTest extends AbstractIntegrationTest {
         ResultActions resultActions = mvc
                 .perform(
                         put("/api/menu/modify/" + menuId)
+                                .with(점주_토큰(accessTokenIssuer))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                 {

@@ -1,5 +1,6 @@
 package com.cafekiosk.stock.controller;
 
+import com.cafekiosk.auth.jwt.AccessTokenIssuer;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
 import com.cafekiosk.stock.entity.Stock;
@@ -19,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.cafekiosk.support.OwnerToken.점주_토큰;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsString;
@@ -64,6 +66,9 @@ public class StockControllerTest extends AbstractIntegrationTest {
     @Autowired
     private StockService stockService;
 
+    @Autowired
+    private AccessTokenIssuer accessTokenIssuer;
+
     private final List<Long> 만든메뉴 = new ArrayList<>();
 
     /** 재고 3. dev 시드의 산토스와 같은 값이다. */
@@ -87,6 +92,7 @@ public class StockControllerTest extends AbstractIntegrationTest {
     @DisplayName("재고를 조정하면 200 이고 수량이 실제로 바뀐다")
     void 재고를_조정하면_200이고_수량이_실제로_바뀐다() throws Exception {
         mvc.perform(patch("/api/stock/" + 산토스.getId())
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(조정본문(50)))
                 .andDo(print())
@@ -106,6 +112,7 @@ public class StockControllerTest extends AbstractIntegrationTest {
     void 재고를_0으로_조정하면_메뉴_목록이_품절로_바뀐다() throws Exception {
         // 0 은 정상 요청이다. 오늘 재료가 다 떨어졌다는 것을 점주가 적는 방법이 이것뿐이다
         mvc.perform(patch("/api/stock/" + 산토스.getId())
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(조정본문(0)))
                 .andDo(print())
@@ -126,6 +133,7 @@ public class StockControllerTest extends AbstractIntegrationTest {
     @DisplayName("음수로 조정하면 400 이고 수량은 그대로다")
     void 음수로_조정하면_400이고_수량은_그대로다() throws Exception {
         mvc.perform(patch("/api/stock/" + 산토스.getId())
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(조정본문(-1)))
                 .andDo(print())
@@ -142,6 +150,7 @@ public class StockControllerTest extends AbstractIntegrationTest {
         // quantity 가 원시 int 였다면 이 요청이 0 으로 채워져 품절 처리로 조용히 성립한다.
         // 점주가 필드 이름을 잘못 적은 순간 메뉴가 품절이 되는 셈이다
         mvc.perform(patch("/api/stock/" + 산토스.getId())
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andDo(print())
@@ -156,6 +165,7 @@ public class StockControllerTest extends AbstractIntegrationTest {
     @DisplayName("없는 메뉴의 재고는 조정할 수 없다")
     void 없는_메뉴는_404다() throws Exception {
         mvc.perform(patch("/api/stock/" + Long.MAX_VALUE)
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(조정본문(50)))
                 .andDo(print())
@@ -172,6 +182,7 @@ public class StockControllerTest extends AbstractIntegrationTest {
         // discontinue() 를 직접 부르지 않고 HTTP 로 중단시킨다. 이 클래스에는 테스트를 감싸는
         // 트랜잭션이 없어서 엔티티 메서드를 직접 부르면 더티 체킹이 돌 자리가 없다
         mvc.perform(delete("/api/menu/delete/" + 중단할메뉴.getId())
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -183,6 +194,7 @@ public class StockControllerTest extends AbstractIntegrationTest {
         // 재고 행은 남아 있지만 그 메뉴는 목록에도 안 뜨고 주문도 안 된다.
         // 수량을 고쳐 봐야 아무 일도 일어나지 않으므로 없는 메뉴와 같게 다룬다
         mvc.perform(patch("/api/stock/" + 중단할메뉴.getId())
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(조정본문(50)))
                 .andDo(print())

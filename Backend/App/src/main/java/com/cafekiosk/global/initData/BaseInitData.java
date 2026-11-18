@@ -1,15 +1,19 @@
 package com.cafekiosk.global.initData;
 
+import com.cafekiosk.auth.entity.Owner;
+import com.cafekiosk.auth.repository.OwnerRepository;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
 import com.cafekiosk.stock.entity.Stock;
 import com.cafekiosk.stock.repository.StockRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,11 +27,21 @@ public class BaseInitData {
 
     private final MenuRepository menuRepository;
     private final StockRepository stockRepository;
+    private final OwnerRepository ownerRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    // 값은 .env 에서 온다. 코드에 박지 않는 이유는 application-dev.yml 주석에 있다
+    @Value("${cafekiosk.auth.seed-owner.email}")
+    private String seedOwnerEmail;
+
+    @Value("${cafekiosk.auth.seed-owner.password}")
+    private String seedOwnerPassword;
 
     @Bean
     ApplicationRunner baseInitDataApplicationRunner() {
         return args -> {
             self.work1();
+            self.work2();
         };
     }
 
@@ -52,6 +66,21 @@ public class BaseInitData {
         Menu menu3 = new Menu("브라질 산토스", "/uploads/Brazil Santos.jpg", 12000, "커피원두", "example@example.com");
         menuRepository.save(menu3);
         stockRepository.save(new Stock(menu3, 3));
+    }
+
+    @Transactional
+    public void work2() {
+        // 이 메서드가 심는 것은 점주 계정이다. 가드도 점주를 센다. work1 이 메뉴를 세는 것과 같은 규칙이다.
+        if (ownerRepository.count() > 0) return;
+
+        // 값이 비어 있으면 아무도 로그인할 수 없는 계정이 생긴다. 조용히 넘어가면 로그인이 왜 안 되는지
+        // 한참 뒤에 찾게 되므로 기동을 멈춘다. 키 자체가 없으면 그보다 앞서 placeholder 해석에서 멈춘다.
+        if (seedOwnerEmail.isBlank() || seedOwnerPassword.isBlank()) {
+            throw new IllegalStateException(".env 의 OWNER_EMAIL 과 OWNER_PASSWORD 를 채워야 dev 점주 계정을 심을 수 있습니다.");
+        }
+
+        // 평문을 넘기는 것이 맞다. 해시는 Owner 생성자가 만든다
+        ownerRepository.save(new Owner(seedOwnerEmail, seedOwnerPassword, passwordEncoder));
     }
 
 }

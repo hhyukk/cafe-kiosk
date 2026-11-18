@@ -1,5 +1,6 @@
 package com.cafekiosk.order.controller;
 
+import com.cafekiosk.auth.jwt.AccessTokenIssuer;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
 import com.cafekiosk.order.dto.OrderDto;
@@ -22,13 +23,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.transaction.AfterTransaction;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.context.WebApplicationContext;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 
 import java.util.List;
 
+import static com.cafekiosk.support.OwnerToken.점주_토큰;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -40,10 +40,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 public class OrderControllerTest extends AbstractIntegrationTest {
 
+    // 손으로 만들지 않고 자동 구성된 것을 받는다. MockMvcBuilders 로 만든 것에는 보안 필터가 빠져
+    // 점주 API 를 토큰 없이 불러도 200 이 나온다. 그러면 이 클래스가 보안 규칙과 반대로 말하게 된다
+    @Autowired
     private MockMvc mvc;
 
     @Autowired
-    private WebApplicationContext context;
+    private AccessTokenIssuer accessTokenIssuer;
 
     @Autowired
     private MenuRepository menuRepository;
@@ -83,8 +86,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     // JUnit 5는 둘 다 실행하고 순서를 보장하지 않아 매 테스트마다 메뉴가 중복 생성됐다. 하나로 합쳤다.
     @BeforeEach
     void setup() {
-        mvc = MockMvcBuilders.webAppContextSetup(context).build();
-
         menu1 = new Menu("아메리카노", "img1", 3000, "커피", "example@example.com");
         menu2 = new Menu("카페라떼", "img2", 4000, "커피", "example@example.com");
         menuRepository.saveAll(List.of(menu1, menu2));
@@ -549,6 +550,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         Long orderId = seededOrderId();
 
         mvc.perform(patch("/api/order/{orderId}/status", orderId)
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"IN_PROGRESS\"}"))
                 .andDo(print())
@@ -565,6 +567,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         Long orderId = seededOrderId();
 
         mvc.perform(patch("/api/order/{orderId}/status", orderId)
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"COMPLETED\"}"))
                 .andDo(print())
@@ -576,6 +579,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @DisplayName("주문 상태 변경 실패 - 존재하지 않는 주문은 400")
     void changeStatus_orderNotFound_badRequest() throws Exception {
         mvc.perform(patch("/api/order/{orderId}/status", 999999L)
+                        .with(점주_토큰(accessTokenIssuer))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\": \"IN_PROGRESS\"}"))
                 .andDo(print())
@@ -590,7 +594,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("주문 목록 조회 - status 미지정이면 전체를 반환하고 orderId, status, orderTime 이 내려온다")
     void getOrders_noStatus_exposesOrderIdStatusOrderTime() throws Exception {
-        mvc.perform(get("/api/orders"))
+        mvc.perform(get("/api/orders").with(점주_토큰(accessTokenIssuer)))
                 .andDo(print())
                 .andExpect(handler().handlerType(OrderController.class))
                 .andExpect(handler().methodName("getOrders"))
@@ -614,14 +618,14 @@ public class OrderControllerTest extends AbstractIntegrationTest {
         orderService.changeStatus(seededOrderId(), OrderStatus.IN_PROGRESS);
 
         // when: IN_PROGRESS 로 조회하면 전이된 주문이 보인다
-        mvc.perform(get("/api/orders").param("status", "IN_PROGRESS"))
+        mvc.perform(get("/api/orders").with(점주_토큰(accessTokenIssuer)).param("status", "IN_PROGRESS"))
                 .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].status").value("IN_PROGRESS"));
 
         // when: CONFIRMED 로 조회하면 더 이상 보이지 않는다(상태가 바뀌었으므로)
-        mvc.perform(get("/api/orders").param("status", "CONFIRMED"))
+        mvc.perform(get("/api/orders").with(점주_토큰(accessTokenIssuer)).param("status", "CONFIRMED"))
                 .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(0));
@@ -631,7 +635,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @DisplayName("주문 목록 조회 - 매칭되는 주문이 없으면 404 가 아니라 200 + 빈 배열")
     void getOrders_noMatch_returnsEmptyList() throws Exception {
         // setup 주문은 CONFIRMED 상태이므로 READY 로 조회하면 매칭이 없다
-        mvc.perform(get("/api/orders").param("status", "READY"))
+        mvc.perform(get("/api/orders").with(점주_토큰(accessTokenIssuer)).param("status", "READY"))
                 .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resultCode").value("200-1"))
@@ -641,7 +645,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("주문 목록 조회 - 잘못된 status 값은 400 + RsData 봉투")
     void getOrders_invalidStatus_badRequest() throws Exception {
-        mvc.perform(get("/api/orders").param("status", "NOPE"))
+        mvc.perform(get("/api/orders").with(점주_토큰(accessTokenIssuer)).param("status", "NOPE"))
                 .andDo(print())
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.resultCode").value("400-1"));
