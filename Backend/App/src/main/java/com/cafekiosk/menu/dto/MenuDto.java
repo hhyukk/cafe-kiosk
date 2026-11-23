@@ -4,7 +4,7 @@ import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.stock.entity.Stock;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.NotNull;
 
 
 public class MenuDto {
@@ -56,9 +56,11 @@ public class MenuDto {
             @NotBlank(message = "메뉴 이름을 입력하세요.")
             @JsonProperty("menu_name")
             String menuName,
-            @Positive(message = "가격은 0보다 커야 합니다.")
+            // 범위는 Menu 가 판정하고 여기서는 값이 왔는지만 본다. int 로 받으면 빠진 가격이 0 이 되어
+            // 정상 가격처럼 통과하므로 Integer 로 받아 빠진 것을 null 로 가른다
+            @NotNull(message = "가격을 입력하세요.")
             @JsonProperty("price")
-            int menuPrice,
+            Integer menuPrice,
             @JsonProperty("img_url")
             String imgUrl,
             @NotBlank(message = "카테고리를 입력하세요.")

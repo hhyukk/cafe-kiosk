@@ -2,6 +2,7 @@ package com.cafekiosk.menu.controller;
 
 import com.cafekiosk.menu.dto.CreateMenuRequestDto;
 import com.cafekiosk.menu.dto.MenuDto;
+import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.service.MenuService;
 import com.cafekiosk.global.rsData.RsData;
 import io.swagger.v3.oas.annotations.Operation;
@@ -81,8 +82,9 @@ public class MenuController {
             @Valid @RequestBody CreateMenuRequestDto req,
             Authentication authentication
     ) {
-        // 품목 제안 최대 값 10,000,000원 검증
-        if (req.getPrice() < 0 || req.getPrice() > 10_000_000) {
+        // 가격 규칙의 주인은 Menu 다. 이 검사는 실패 응답을 지금의 평문으로 지키려고 남겨 둔 앞단이고,
+        // 응답을 RsData 로 통일할 때 걷어낸다. 범위를 다시 적지 않도록 Menu 의 상수를 쓴다
+        if (req.getPrice() < Menu.MIN_PRICE || req.getPrice() > Menu.MAX_PRICE) {
             return ResponseEntity
                     .badRequest()
                     .body("메뉴 가격은 0원 이상 10,000,000원 이하만 가능합니다.");
