@@ -130,7 +130,9 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 
 판매중인 메뉴 목록을 조회한다. 익명을 포함해 누구나 부른다. FR-MNU-01. 근거는 `MenuController.getMenus`, `MenuService.findAllWithStock`, `MenuDto.MenuListResponse`.
 
-판매를 중단한 메뉴는 이 목록에서 빠진다. FR-MNU-07. 행은 남아 있지만 `deleted_at`이 채워진 메뉴는 `MenuRepository.findAllByDeletedAtIsNull`이 걸러낸다.
+판매를 중단한 메뉴는 이 목록에서 빠진다. FR-MNU-07. 행은 남아 있지만 `deleted_at`이 채워진 메뉴는 `MenuRepository.findAllByDeletedAtIsNullOrderByIdAsc`가 걸러낸다.
+
+목록은 menu_id 오름차순이다. 등록한 순서이고 새 메뉴는 끝에 붙는다. 정렬 기준이 없던 때는 메뉴를 수정하면 그 메뉴가 목록 끝으로 밀렸다. PostgreSQL 은 UPDATE 때 행의 새 버전을 테이블 뒤쪽에 쓰고, 정렬 없는 조회는 저장된 순서대로 돌려주기 때문이다. 손님 화면은 받은 순서를 그대로 그린다.
 
 응답 200. 남은 재고와 품절 여부를 함께 내려준다. 손님 화면이 품절을 표시하고 담기를 막는 데 쓴다. FR-KSK-08. 재고 행이 없는 메뉴는 stock이 null이고 sold_out이 true다. 없는 것과 0개인 것은 다른 사실이므로 0으로 뭉개지 않는다.
 
