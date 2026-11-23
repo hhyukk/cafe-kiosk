@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -83,7 +84,8 @@ public class MenuController {
 
     @PostMapping //추가기능
     public ResponseEntity<String> createMenu(
-            @Valid @RequestBody CreateMenuRequestDto req
+            @Valid @RequestBody CreateMenuRequestDto req,
+            Authentication authentication
     ) {
         // 품목 제안 최대 값 10,000,000원 검증
         if (req.getPrice() < 0 || req.getPrice() > 10_000_000) {
@@ -92,7 +94,14 @@ public class MenuController {
                     .body("메뉴 가격은 0원 이상 10,000,000원 이하만 가능합니다.");
         }
 
-        menuService.createMenu(req);
+        // 등록자는 보안 필터가 검증한 토큰에서 꺼낸다. 토큰의 sub 가 이메일이라 getName() 이
+        // 곧 등록자 이메일이다. 그렇게 정한 이유는 AccessTokenIssuer 주석에 있다.
+        // 여기서 신원을 읽는 것은 기록하려는 것이지 권한을 판단하려는 것이 아니다. 누가 이 API 를
+        // 부를 수 있는지는 SecurityConfig 의 경로 표가 이미 정했다.
+        //
+        // 서비스에는 문자열로 넘긴다. 서비스가 보안 컨텍스트를 직접 읽으면 그 메서드가 기대는
+        // 입력 하나가 시그니처에서 사라진다.
+        menuService.createMenu(req, authentication.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body("생성 완료되었습니다.");
     }
 

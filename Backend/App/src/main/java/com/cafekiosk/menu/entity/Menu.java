@@ -20,6 +20,8 @@ public class Menu extends BaseEntity {
     int menuPrice;
     @NotNull
     String category;
+    // 등록자 기록이다. 값은 컨트롤러가 토큰의 sub 에서 꺼내 넘기고 요청 본문에서 받지 않는다.
+    // 권한 판단에 쓰지 않으므로 owner 를 외래키로 가리키지도 않는다. docs/ERD.md 3-3 참고.
     @NotNull
     String email;
 

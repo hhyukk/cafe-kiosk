@@ -6,6 +6,7 @@ import com.cafekiosk.menu.repository.MenuRepository;
 import com.cafekiosk.stock.entity.Stock;
 import com.cafekiosk.stock.repository.StockRepository;
 import com.cafekiosk.support.AbstractIntegrationTest;
+import com.cafekiosk.support.OwnerToken;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -93,7 +94,6 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {
-                                            "email": "example@example.com",
                                             "category": "디저트",
                                             "menuName": "트랜잭션 경계 확인용 케이크",
                                             "price": 6500,
@@ -126,7 +126,6 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                         {
-                                            "email": "example@example.com",
                                             "category": "디저트",
                                             "menuName": "재고 행 확인용 케이크",
                                             "price": 6500,
@@ -151,6 +150,37 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
 
         // 이 수량이 0 이라는 사실과 재고 0 이 목록에서 품절로 내려간다는 사실이 만나
         // 새 메뉴는 품절로 태어난다가 성립한다. 뒤엣것은 MenuControllerTest 가 지킨다.
+    }
+
+    @Test
+    @DisplayName("메뉴 생성 - 등록자는 요청 본문이 아니라 토큰의 이메일로 기록된다")
+    void 등록자는_토큰의_이메일로_기록된다() throws Exception {
+        mvc.perform(
+                        post("/api/menu")
+                                .with(점주_토큰(accessTokenIssuer))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "category": "디저트",
+                                            "menuName": "등록자 확인용 케이크",
+                                            "price": 6500,
+                                            "imageURL": "tmpImgURL"
+                                        }
+                                        """)
+                )
+                .andDo(print())
+                .andExpect(status().isCreated());
+
+        Menu 저장된메뉴 = menuRepository.findAll().stream()
+                .filter(menu -> menu.getMenuName().equals("등록자 확인용 케이크"))
+                .findFirst()
+                .orElseThrow();
+        만든메뉴.add(저장된메뉴.getId());
+
+        // 본문에는 이메일이 없다. 그런데도 등록자가 채워졌다면 그 값이 올 수 있는 곳은 토큰뿐이다.
+        // 이 클래스는 트랜잭션 밖에 서 있으므로 위에서 읽은 Menu 는 요청을 처리한
+        // 영속성 컨텍스트가 아니라 DB 에서 왔다. 커밋된 값을 보는 것이다.
+        assertThat(저장된메뉴.getEmail()).isEqualTo(OwnerToken.테스트_점주_이메일);
     }
 
     @Test

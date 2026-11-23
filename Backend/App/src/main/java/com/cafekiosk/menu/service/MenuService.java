@@ -94,8 +94,8 @@ public class MenuService {
     // 낙관적 락 재시도는 롤백된 트랜잭션 밖 새 트랜잭션에서 일어나야 하므로(NFR-CON-05)
     // 그 컨트롤러 트랜잭션을 걷어냈고, 서비스가 자기 경계를 직접 갖는다.
     @Transactional
-    public void createMenu(CreateMenuRequestDto req) {
-        Menu menu = new Menu(req.getMenuName(),req.getImageURL(),req.getPrice(),req.getCategory(),req.getEmail());
+    public void createMenu(CreateMenuRequestDto req, String registrantEmail) {
+        Menu menu = new Menu(req.getMenuName(),req.getImageURL(),req.getPrice(),req.getCategory(),registrantEmail);
         menuRepository.save(menu);
 
         // 재고 행을 같은 트랜잭션에서 함께 만든다. docs/ERD.md 3-4 가 재고 없는 메뉴를

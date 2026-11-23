@@ -27,7 +27,8 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
  */
 public final class OwnerToken {
 
-    private static final String 테스트_점주_이메일 = "owner@test.com";
+    // 메뉴 등록자가 토큰에서 온다는 것을 테스트가 이 값과 비교해 확인하므로 연다
+    public static final String 테스트_점주_이메일 = "owner@test.com";
 
     private OwnerToken() {
     }
