@@ -13,6 +13,11 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor
 public class Menu extends BaseEntity {
+    // 메뉴 가격의 범위다. FR-MNU-03. 판정은 아래 requireValidPrice 하나가 하고, 등록 컨트롤러처럼
+    // 범위를 앞단에서 다시 보는 자리는 숫자를 직접 적지 않고 이 상수를 가져다 쓴다
+    public static final int MIN_PRICE = 0;
+    public static final int MAX_PRICE = 10_000_000;
+
     @NotNull
     String menuName;
     String imgUrl;
@@ -48,6 +53,7 @@ public class Menu extends BaseEntity {
             String category,
             String email
     ) {
+        requireValidPrice(menuPrice);
         this.menuName = menuName;
         this.imgUrl = imgUrl;
         this.menuPrice = menuPrice;
@@ -75,9 +81,30 @@ public class Menu extends BaseEntity {
             String imageUrl,
             String category
     ) {
+        // 판정이 대입보다 앞서야 한다. 가격에서 터졌는데 이름은 이미 바뀐 반쪽짜리 메뉴를 남기지 않는다
+        requireValidPrice(menuPrice);
         this.menuName = menuName;
         this.menuPrice = menuPrice;
         this.imgUrl = imageUrl;
         this.category = category;
+    }
+
+    /**
+     * 가격 규칙의 유일한 판정 자리다. 0원 이상 10,000,000원 이하. FR-MNU-03.
+     *
+     * 한때 이 규칙이 등록 컨트롤러의 손 검사와 수정 DTO 의 @Positive 로 흩어져 있었고, 두 경로가
+     * 서로 다른 규칙을 따랐다. 등록은 0원을 받고 수정은 거절했으며, 상한은 등록만 지켰다.
+     * 메뉴가 만들어지고 바뀌는 모든 경로가 이 엔티티를 지나므로 판정을 여기 하나로 모은다.
+     *
+     * IllegalArgumentException 을 던지는 것은 Stock 의 수량 규칙과 같고, GlobalExceptionHandler 가
+     * 그것을 400-1 로 옮긴다. 필드에 @Min 과 @Max 를 다는 방식은 쓰지 않는다. 그 검사는 부르는 순간이
+     * 아니라 Hibernate 가 엔티티를 쓸 때 돌고, 거기서 나는 ConstraintViolationException 은
+     * GlobalExceptionHandler 에 매핑이 없다.
+     */
+    private static void requireValidPrice(int menuPrice) {
+        if (menuPrice < MIN_PRICE || menuPrice > MAX_PRICE) {
+            throw new IllegalArgumentException(
+                    "메뉴 가격은 0원 이상 10,000,000원 이하여야 합니다: " + menuPrice);
+        }
     }
 }

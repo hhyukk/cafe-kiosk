@@ -181,11 +181,11 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 
 등록자는 요청 본문이 아니라 토큰에서 온다. 토큰의 sub 가 점주 이메일이라 `MenuController.createMenu` 가 `Authentication.getName()` 을 등록자로 넘긴다. 그래서 요청 본문에 email 필드가 없다. FR-MNU-06, SC-05.
 
-현재 구현 메모. 응답이 지금은 평문 문자열 생성 완료되었습니다이며 RsData가 아니다.
+현재 구현 메모. 응답이 지금은 평문 문자열 생성 완료되었습니다이며 RsData가 아니다. 가격 범위를 벗어난 등록의 400도 평문이다. 판정의 주인은 `Menu`지만 등록 컨트롤러가 실패 응답을 지금의 모양으로 지키려고 같은 범위를 앞단에서 먼저 보기 때문이다. 응답을 RsData로 통일할 때 그 앞단 검사를 걷어낸다.
 
 #### PUT /api/menu/modify/{id}
 
-메뉴의 이름, 가격, 이미지, 분류를 수정한다. 점주 토큰이 필요하다. 근거는 `MenuController.modifyMenu`, `MenuDto.MenuModifyRequest`.
+메뉴의 이름, 가격, 이미지, 분류를 수정한다. 점주 토큰이 필요하다. 가격은 등록과 같이 0원 이상 10,000,000원 이하이고, 빠지면 400이다. FR-MNU-03. 근거는 `MenuController.modifyMenu`, `MenuService.modify`, `MenuDto.MenuModifyRequest`.
 
 요청
 
@@ -212,7 +212,7 @@ resultCode는 상태 코드에 일련번호를 붙인 문자열이다. 200-1, 40
 
 누가 고칠 수 있는지는 점주 토큰으로만 가른다. 메뉴의 등록자와 비교하지 않으므로 다른 점주가 등록한 메뉴도 고칠 수 있다. FR-AUTH-05, FR-MNU-06.
 
-현재 구현 메모. 없는 메뉴 id는 `MenuController.modifyMenu`가 Optional.get을 직접 불러 NoSuchElementException이 나고 404로 처리된다.
+가격 범위는 `Menu` 엔티티가 판정한다. 등록과 수정이 같은 판정을 지나므로 두 경로의 규칙이 갈리지 않는다. 한때 등록은 컨트롤러가, 수정은 DTO의 `@Positive`가 따로 보다가 수정만 0원을 거절하고 상한을 넘겼다. 범위를 벗어나면 엔티티가 던진 예외를 `GlobalExceptionHandler`가 400-1로 옮긴다.
 
 #### DELETE /api/menu/delete/{menu_id}
 
@@ -503,7 +503,6 @@ BFF는 백엔드에 닿기 전에 필수 필드와 값 범위를 먼저 본다. 
 
 | 주제 | 목표 | 현재 | 단계 |
 | --- | --- | --- | --- |
-| 동시성 | 마지막 한 잔 정확히 한 명 성공 | 세 전략 모두 만족, 실측 수치와 ADR 남음 | Phase 2 |
 | 인증 | JWT와 httpOnly 쿠키, ROLE_OWNER 보호 | 백엔드는 토큰 검증과 401 까지, BFF 쿠키는 아직 | Phase 3 |
 | 손님 주문 조회 | 대기번호로 자기 주문만 | 이메일로 통째 조회 | Phase 3 |
 | 응답 봉투 | RsData로 통일 | 평문, 맨 DTO, Map 혼재 | Phase 3 |

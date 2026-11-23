@@ -57,10 +57,10 @@ public class MenuController {
             @RequestBody
             MenuModifyRequest req
     ) {
-        Menu menu = menuService
-                .findById(id).get();
-        menuService.modify(
-                menu,
+        // 조회와 수정과 응답 조립이 모두 서비스 트랜잭션 안에서 끝난다. 엔티티는 컨트롤러로 나오지 않는다.
+        // 없거나 판매 중단된 메뉴면 서비스가 던진 예외를 GlobalExceptionHandler 가 404 로 옮긴다
+        MenuModifyResponse modified = menuService.modify(
+                id,
                 req.menuName(),
                 req.menuPrice(),
                 req.imgUrl(),
@@ -70,7 +70,7 @@ public class MenuController {
         RsData<MenuModifyResponse> rs = new RsData<>(
                 "200-1",
                 "메뉴를 수정하였습니다.",
-                new MenuModifyResponse(menu)
+                modified
         );
 
         return ResponseEntity.ok(rs);
@@ -82,8 +82,9 @@ public class MenuController {
             @Valid @RequestBody CreateMenuRequestDto req,
             Authentication authentication
     ) {
-        // 품목 제안 최대 값 10,000,000원 검증
-        if (req.getPrice() < 0 || req.getPrice() > 10_000_000) {
+        // 가격 규칙의 주인은 Menu 다. 이 검사는 실패 응답을 지금의 평문으로 지키려고 남겨 둔 앞단이고,
+        // 응답을 RsData 로 통일할 때 걷어낸다. 범위를 다시 적지 않도록 Menu 의 상수를 쓴다
+        if (req.getPrice() < Menu.MIN_PRICE || req.getPrice() > Menu.MAX_PRICE) {
             return ResponseEntity
                     .badRequest()
                     .body("메뉴 가격은 0원 이상 10,000,000원 이하만 가능합니다.");

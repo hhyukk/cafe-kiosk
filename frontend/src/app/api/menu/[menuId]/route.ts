@@ -90,6 +90,14 @@ export async function PUT(
       );
     }
 
+    // 최종 판정은 백엔드의 Menu 가 한다. 등록처럼 여기서도 범위를 먼저 봐서 서버까지 가지 않고 알려 준다
+    if (body.price < 0 || body.price > 10_000_000) {
+      return NextResponse.json(
+        { message: "메뉴 가격은 0원 이상 10,000,000원 이하만 가능합니다." },
+        { status: 400 }
+      );
+    }
+
     const backendResponse = await fetch(
       `http://localhost:8080/api/menu/modify/${menuId}`,
       {

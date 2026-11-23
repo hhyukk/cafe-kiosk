@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// 브라우저가 보낸 주문 아이템이다. 아래 검증을 지나기 전에는 모양을 믿을 수 없어 필드를 선택으로 둔다
+type OrderItemInput = {
+  menuId?: number;
+  count?: number;
+};
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -25,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     // 주문 최대 수량 100개 제한 (전체 수량 기준)
     const totalCount = body.items.reduce(
-      (sum: number, item: any) => sum + (item?.count ?? 0),
+      (sum: number, item: OrderItemInput) => sum + (item?.count ?? 0),
       0
     );
     if (totalCount <= 0 || totalCount > 100) {
@@ -41,7 +47,7 @@ export async function POST(request: NextRequest) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: body.email,
-        items: body.items.map((item: any) => ({
+        items: body.items.map((item: OrderItemInput) => ({
           menuId: item.menuId,
           count: item.count,
         })),
@@ -68,7 +74,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let responseJson: any = {};
+    // 백엔드 응답을 해석하지 않고 그대로 넘기므로 모양을 정하지 않는다
+    let responseJson: unknown = {};
     try {
       responseJson = await backendResponse.json();
     } catch {

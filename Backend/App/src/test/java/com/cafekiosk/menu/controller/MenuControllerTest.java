@@ -266,6 +266,86 @@ public class MenuControllerTest extends AbstractIntegrationTest {
         assertThat(메뉴아이디).isSorted();
     }
 
+    // t07 부터 t09 는 메뉴 수정이 가격 규칙을 지키는지 본다. 가격은 0원 이상 10,000,000원 이하다. FR-MNU-03.
+    // 규칙의 경계값 자체는 MenuTest 가 POJO 로 보고, 여기서는 그 판정이 HTTP 응답으로 어떻게 나가는지를 본다.
+
+    @Test
+    @DisplayName("메뉴 수정, 가격 0원은 200-1")
+    void t07() throws Exception {
+        // 등록은 0원을 받는데 수정만 @Positive 로 0원을 거절하던 때가 있었다
+        ResultActions resultActions = mvc
+                .perform(
+                        put("/api/menu/modify/" + 재고있는메뉴.getId())
+                                .with(점주_토큰(accessTokenIssuer))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "menu_name": "망패블",
+                                            "price": 0,
+                                            "img_url": "tmpImgURL",
+                                            "category": "블렌디드"
+                                        }
+                                        """)
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
+                .andExpect(jsonPath("$.data.price").value(0));
+    }
+
+    @Test
+    @DisplayName("메뉴 수정, 가격이 10,000,000원을 넘으면 400-1")
+    void t08() throws Exception {
+        // 상한 검사가 등록 컨트롤러에만 있어서 수정은 얼마든 받던 때가 있었다
+        ResultActions resultActions = mvc
+                .perform(
+                        put("/api/menu/modify/" + 재고있는메뉴.getId())
+                                .with(점주_토큰(accessTokenIssuer))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "menu_name": "망패블",
+                                            "price": 10000001,
+                                            "img_url": "tmpImgURL",
+                                            "category": "블렌디드"
+                                        }
+                                        """)
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.resultCode").value("400-1"));
+    }
+
+    @Test
+    @DisplayName("메뉴 수정, 가격이 빠지면 400-1")
+    void t09() throws Exception {
+        // 가격 필드가 int 라 본문에서 빠지면 0 이 된다. 0 은 정상 가격이므로 막지 않으면
+        // 가격을 빠뜨린 요청이 메뉴를 조용히 0원으로 만든다. @Positive 가 그 0 을 거절하면서
+        // 이 규칙을 우연히 함께 지키고 있었으므로, 그 어노테이션을 걷어낼 때 잃지 않게 여기서 붙잡는다
+        ResultActions resultActions = mvc
+                .perform(
+                        put("/api/menu/modify/" + 재고있는메뉴.getId())
+                                .with(점주_토큰(accessTokenIssuer))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "menu_name": "망패블",
+                                            "img_url": "tmpImgURL",
+                                            "category": "블렌디드"
+                                        }
+                                        """)
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.resultCode").value("400-1"));
+    }
+
     // 메뉴 생성과 삭제가 실제로 DB 에 반영되는지는 MenuWriteTransactionTest 가 지킨다.
     // 이 클래스는 @Transactional 이라 서비스의 readOnly 트랜잭션이 여기 참여만 하고
     // readOnly 속성이 무시된다. 검증하려는 트랜잭션 경계 결함이 통째로 가려지므로
