@@ -2,7 +2,6 @@ package com.cafekiosk.menu.controller;
 
 import com.cafekiosk.menu.dto.CreateMenuRequestDto;
 import com.cafekiosk.menu.dto.MenuDto;
-import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.service.MenuService;
 import com.cafekiosk.global.rsData.RsData;
 import io.swagger.v3.oas.annotations.Operation;
@@ -57,10 +56,10 @@ public class MenuController {
             @RequestBody
             MenuModifyRequest req
     ) {
-        Menu menu = menuService
-                .findById(id).get();
-        menuService.modify(
-                menu,
+        // 조회와 수정과 응답 조립이 모두 서비스 트랜잭션 안에서 끝난다. 엔티티는 컨트롤러로 나오지 않는다.
+        // 없거나 판매 중단된 메뉴면 서비스가 던진 예외를 GlobalExceptionHandler 가 404 로 옮긴다
+        MenuModifyResponse modified = menuService.modify(
+                id,
                 req.menuName(),
                 req.menuPrice(),
                 req.imgUrl(),
@@ -70,7 +69,7 @@ public class MenuController {
         RsData<MenuModifyResponse> rs = new RsData<>(
                 "200-1",
                 "메뉴를 수정하였습니다.",
-                new MenuModifyResponse(menu)
+                modified
         );
 
         return ResponseEntity.ok(rs);

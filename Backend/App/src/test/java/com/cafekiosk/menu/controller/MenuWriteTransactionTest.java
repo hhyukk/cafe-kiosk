@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.handler;
@@ -35,7 +36,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ── 이 클래스에 @Transactional 이 없는 것이 핵심이다 ──────────────────────────────
  *
  * MenuService 는 클래스 레벨이 @Transactional(readOnly = true) 다. 쓰기 메서드가 그걸
- * 덮어쓰지 않으면 Hibernate 가 flush 를 하지 않아 INSERT 와 DELETE 가 예외 없이 사라진다.
+ * 덮어쓰지 않으면 Hibernate 가 flush 를 하지 않아 INSERT 와 UPDATE 가 예외 없이 사라진다.
+ * 삭제도 행을 지우지 않고 판매를 중단하는 일이라 UPDATE 다.
  * 200 을 응답하고 행은 그대로 남는 형태로 깨지므로 응답만 봐서는 알 수 없다.
  *
  * 그런데 테스트 클래스에 @Transactional 을 붙이면 이 결함이 통째로 가려진다.
@@ -181,6 +183,46 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
         // 이 클래스는 트랜잭션 밖에 서 있으므로 위에서 읽은 Menu 는 요청을 처리한
         // 영속성 컨텍스트가 아니라 DB 에서 왔다. 커밋된 값을 보는 것이다.
         assertThat(저장된메뉴.getEmail()).isEqualTo(OwnerToken.테스트_점주_이메일);
+    }
+
+    @Test
+    @DisplayName("메뉴 수정 - 200 이고 바뀐 값이 실제로 남는다")
+    void 메뉴수정이_DB에_반영된다() throws Exception {
+        Menu menu = 메뉴를_심는다("수정 전 케이크", OwnerToken.테스트_점주_이메일);
+
+        mvc.perform(
+                        put("/api/menu/modify/" + menu.getId())
+                                .with(점주_토큰(accessTokenIssuer))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "menu_name": "수정 후 케이크",
+                                            "price": 7000,
+                                            "img_url": "changedImgURL",
+                                            "category": "케이크"
+                                        }
+                                        """)
+                )
+                .andDo(print())
+                .andExpect(handler().handlerType(MenuController.class))
+                .andExpect(handler().methodName("modifyMenu"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.menu_name").value("수정 후 케이크"));
+
+        // 응답은 서비스가 메모리 위의 엔티티로 만든 것이라 UPDATE 가 커밋됐는지 알려 주지 않는다.
+        // 수정이 readOnly 트랜잭션에 갇히면 응답은 바뀐 값을 말하는데 행은 그대로다. 행을 다시 읽는다.
+        //
+        // 이 테스트가 지키지 못하는 것도 적어 둔다. MockMvc 요청에도 open-in-view 가 켜져 있어서,
+        // 컨트롤러가 조회해 둔 엔티티를 서비스에 넘기던 예전 구조에서도 이 테스트는 초록이었다.
+        // 그 구조를 잡으려면 open-in-view 를 끈 컨텍스트가 하나 더 떠야 하는데, application-test.yml 이
+        // 적어 두었듯 컨텍스트마다 커넥션 풀이 따로 열려 PostgreSQL 연결 한도에 다가간다.
+        // open-in-view 에 기대지 않는다는 것은 MenuService.modify 가 조회부터 응답 조립까지
+        // 한 트랜잭션에서 끝내는 구조가 보장한다.
+        Menu 커밋된메뉴 = menuRepository.findById(menu.getId()).orElseThrow();
+        assertThat(커밋된메뉴.getMenuName()).isEqualTo("수정 후 케이크");
+        assertThat(커밋된메뉴.getMenuPrice()).isEqualTo(7000);
+        assertThat(커밋된메뉴.getImgUrl()).isEqualTo("changedImgURL");
+        assertThat(커밋된메뉴.getCategory()).isEqualTo("케이크");
     }
 
     @Test

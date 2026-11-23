@@ -15,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -60,21 +59,35 @@ public class MenuService {
                 .toList();
     }
 
-    public Optional<Menu> findById(Long id){
-        return menuRepository.findByIdAndDeletedAtIsNull(id);
-    }
-
-    // 누가 고치는지 묻지 않는다. 점주 토큰이 있는지는 SecurityConfig 의 경로 표가 이미 봤고,
-    // 등록자 이메일은 기록일 뿐 권한 판단에 쓰지 않는다. 그래서 실패할 갈래가 없어 돌려줄 것도 없다.
+    /**
+     * 메뉴를 고치고 고친 결과를 돌려준다. 판매 중단된 메뉴는 없는 메뉴와 같은 404 다.
+     *
+     * 조회와 수정과 응답 조립이 모두 이 트랜잭션 안에 있어야 한다. 예전에는 컨트롤러가 조회를 따로
+     * 불러 메뉴를 받아 두었다가 이 메서드에 넘겼고, 두 호출 사이에서 트랜잭션이 한 번 끝났다.
+     * open-in-view 가 없으면 그때 메뉴가 준영속이 되고, 준영속 엔티티는 고쳐도 변경 감지에 걸리지
+     * 않아 UPDATE 가 나가지 않는다. 그런데도 저장됐던 것은 open-in-view 가 요청 내내 같은 영속성
+     * 컨텍스트를 붙들고 있었기 때문이다. 그 설정을 끄는 날 200 을 응답하고 행은 그대로인 형태로
+     * 깨진다. StockService.adjust 가 id 를 받아 조회부터 응답 조립까지 한 트랜잭션에서 끝내는 것과
+     * 같은 모양으로 맞췄다.
+     *
+     * 누가 고치는지는 묻지 않는다. 점주 토큰이 있는지는 SecurityConfig 의 경로 표가 이미 봤고,
+     * 등록자 이메일은 기록일 뿐 권한 판단에 쓰지 않는다.
+     */
     @Transactional
-    public void modify(
-            Menu menu,
+    public MenuDto.MenuModifyResponse modify(
+            long id,
             String menuName,
             int menuPrice,
             String imageUrl,
             String category
             ) {
+        Menu menu = menuRepository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "존재하지 않는 메뉴입니다: " + id
+                ));
+
         menu.modify(menuName, menuPrice, imageUrl, category);
+        return new MenuDto.MenuModifyResponse(menu);
     }
     // 쓰기 메서드는 클래스 레벨의 readOnly = true 를 반드시 덮어써야 한다.
     // readOnly 트랜잭션에서는 Hibernate 가 flush 를 하지 않아 INSERT 도, 변경 감지가
