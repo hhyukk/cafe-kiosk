@@ -99,6 +99,9 @@ public class MenuControllerTest extends AbstractIntegrationTest {
         // PostgreSQL IDENTITY 시퀀스는 롤백 후 되돌아가지 않으므로 실제 저장된 ID를 조회
         long menuId = menuRepository.findAll().get(1).getId(); // 카페라떼
 
+        // setup 이 심은 메뉴의 등록자는 example@example.com 이고 토큰의 이메일은 owner@test.com 이라
+        // 서로 다르다. 그래도 수정된다. 등록자 이메일로 권한을 가르지 않는다는 것을 지키는 자리는
+        // MenuWriteTransactionTest 이고 여기서는 덤이다.
         ResultActions resultActions = mvc
                 .perform(
                         put("/api/menu/modify/" + menuId)
@@ -109,8 +112,7 @@ public class MenuControllerTest extends AbstractIntegrationTest {
                                     "menu_name": "쿨라임 피지오",
                                     "price": 3000,
                                     "img_url": "testImgUrl",
-                                    "category": "피지오",
-                                    "email": "example@example.com"
+                                    "category": "피지오"
                                 }
                                 """)
                 )
@@ -143,8 +145,7 @@ public class MenuControllerTest extends AbstractIntegrationTest {
                                     "menu_name": "쿨라임 피지오",
                                     "price": 3000,
                                     "img_url": "testImgUrl",
-                                    "category": "피지오",
-                                    "email": "example@example.com"
+                                    "category": "피지오"
                                 }
                                 """)
                 )
@@ -181,6 +182,50 @@ public class MenuControllerTest extends AbstractIntegrationTest {
                 // 다른 사실이고, 0 으로 적으면 응답이 사실과 다른 말을 하게 된다
                 .andExpect(jsonPath("$[?(@.menu_id == %d && @.stock == null)]".formatted(재고행없는메뉴.getId())).exists())
                 .andExpect(jsonPath("$[?(@.menu_id == %d)].sold_out".formatted(재고행없는메뉴.getId())).value(true));
+    }
+
+    @Test
+    @DisplayName("메뉴 삭제, 없는 메뉴는 404-1")
+    void t04() throws Exception {
+        int menuId = Integer.MAX_VALUE;
+
+        ResultActions resultActions = mvc
+                .perform(
+                        delete("/api/menu/delete/" + menuId)
+                                .with(점주_토큰(accessTokenIssuer))
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(handler().handlerType(MenuController.class))
+                .andExpect(handler().methodName("deleteMenu"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.resultCode").value("404-1"))
+                .andExpect(jsonPath("$.message").value("해당 데이터가 존재하지 않습니다."));
+    }
+
+    @Test
+    @DisplayName("메뉴 삭제, 이미 판매 중단된 메뉴도 404-1")
+    void t05() throws Exception {
+        // 판매 중단된 메뉴는 조회에서 걸러져 없는 메뉴와 같은 답을 받는다. 예전에는 이 경우가
+        // 본문 이메일이 등록자와 다를 때와 한 갈래로 묶여 401 이었다. 토큰을 통과한 요청에
+        // 401 을 주면 다시 로그인하라는 말이 되는데, 다시 로그인해도 판매 중단된 메뉴는 그대로다.
+        Menu 판매중단메뉴 = new Menu("단종된 시즌 라떼", "tmpImgURL", 6000, "커피", "example@example.com");
+        판매중단메뉴.discontinue();
+        menuRepository.save(판매중단메뉴);
+
+        ResultActions resultActions = mvc
+                .perform(
+                        delete("/api/menu/delete/" + 판매중단메뉴.getId())
+                                .with(점주_토큰(accessTokenIssuer))
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(handler().handlerType(MenuController.class))
+                .andExpect(handler().methodName("deleteMenu"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.resultCode").value("404-1"));
     }
 
     // 메뉴 생성과 삭제가 실제로 DB 에 반영되는지는 MenuWriteTransactionTest 가 지킨다.

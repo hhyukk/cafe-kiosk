@@ -1,7 +1,6 @@
 package com.cafekiosk.menu.controller;
 
 import com.cafekiosk.menu.dto.CreateMenuRequestDto;
-import com.cafekiosk.menu.dto.DeleteMenuRequestDto;
 import com.cafekiosk.menu.dto.MenuDto;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.service.MenuService;
@@ -60,25 +59,21 @@ public class MenuController {
     ) {
         Menu menu = menuService
                 .findById(id).get();
-        boolean ok = menuService.modify(
+        menuService.modify(
                 menu,
                 req.menuName(),
                 req.menuPrice(),
                 req.imgUrl(),
-                req.category(),
-                req.email()
+                req.category()
                 );
-        if(ok){
-            RsData<MenuModifyResponse> rs = new RsData<>(
-                    "200-1",
-                    "메뉴를 수정하였습니다.",
-                    new MenuModifyResponse(menu)
-            );
 
-            return ResponseEntity.ok(rs);
-        }
-        else return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        RsData<MenuModifyResponse> rs = new RsData<>(
+                "200-1",
+                "메뉴를 수정하였습니다.",
+                new MenuModifyResponse(menu)
+        );
 
+        return ResponseEntity.ok(rs);
     }
 
 
@@ -107,17 +102,11 @@ public class MenuController {
 
     @DeleteMapping("/delete/{menu_id}")
     public ResponseEntity<String> deleteMenu(
-            @PathVariable Long menu_id,
-            @RequestBody @Valid DeleteMenuRequestDto req
+            @PathVariable Long menu_id
     ) {
-        req.setMenuId(menu_id);
-
-        boolean ok = menuService.deleteMenu(req);
-
-        if (ok) { //validation 통과
-            return ResponseEntity.status(HttpStatus.OK).body("삭제되었습니다.");
-        }
-        // validation 실패
-         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("이메일이 잘못되었거나 삭제 권한이 없습니다.");
+        // 실패 갈래가 여기 없다. 없거나 이미 판매 중단된 메뉴면 서비스가 예외를 던지고
+        // GlobalExceptionHandler 가 404 로 옮긴다. 이유는 MenuService.deleteMenu 주석에 있다.
+        menuService.deleteMenu(menu_id);
+        return ResponseEntity.status(HttpStatus.OK).body("삭제되었습니다.");
     }
 }

@@ -48,6 +48,8 @@ public class MenuDto {
         }
     }
 
+    // 이메일 컴포넌트가 없는 것이 결정이다. 누가 고칠 수 있는지는 토큰으로만 판단하고
+    // 요청 본문의 이메일을 등록자와 비교하지 않는다. FR-AUTH-05.
     public record MenuModifyRequest(
             @JsonProperty("menu_id")
             Long menuId,
@@ -60,9 +62,7 @@ public class MenuDto {
             @JsonProperty("img_url")
             String imgUrl,
             @NotBlank(message = "카테고리를 입력하세요.")
-            String category,
-            @NotBlank(message = "이메일을 입력하세요.")
-            String email
+            String category
 
     ) {}
 

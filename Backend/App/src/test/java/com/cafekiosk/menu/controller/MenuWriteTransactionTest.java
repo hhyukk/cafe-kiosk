@@ -184,19 +184,15 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("메뉴 삭제 - 등록자 이메일이 일치하면 200 이고 행은 남되 판매가 중단된다")
+    @DisplayName("메뉴 삭제 - 200 이고 행은 남되 판매가 중단된다")
     void 메뉴삭제가_DB에_반영된다() throws Exception {
-        Menu menu = 메뉴를_심는다("판매 중단 확인용 케이크", "example@example.com");
+        // 등록자를 토큰의 이메일과 같게 심어 이 테스트에서 등록자라는 변수를 없앤다.
+        // 여기서는 판매 중단이 DB 에 남는지만 보고, 등록자가 달라도 지워지는지는 아래 테스트가 본다.
+        Menu menu = 메뉴를_심는다("판매 중단 확인용 케이크", OwnerToken.테스트_점주_이메일);
 
         mvc.perform(
                         delete("/api/menu/delete/" + menu.getId())
                                 .with(점주_토큰(accessTokenIssuer))
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {
-                                            "email": "example@example.com"
-                                        }
-                                        """)
                 )
                 .andDo(print())
                 .andExpect(handler().handlerType(MenuController.class))
@@ -223,32 +219,29 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("메뉴 삭제 - 등록자 이메일이 다르면 401 이고 메뉴는 판매중 그대로다")
-    void 등록자가_아니면_메뉴가_지워지지_않는다() throws Exception {
-        Menu menu = 메뉴를_심는다("남의 뉴욕치즈케이크", "example@example.com");
+    @DisplayName("메뉴 삭제 - 등록자가 아니어도 점주 토큰이 있으면 200 이고 판매가 중단된다")
+    void 등록자가_아니어도_점주_토큰이면_판매가_중단된다() throws Exception {
+        Menu menu = 메뉴를_심는다("남이 등록한 뉴욕치즈케이크", "example@example.com");
 
-        // 토큰은 맞게 싣는다. 이 401 은 보안 필터가 아니라 컨트롤러의 이메일 비교가 내야 한다.
-        // 토큰 없이 보내면 필터가 먼저 401 을 내서 이 테스트가 무엇을 막았는지 알 수 없게 된다.
-        // 아래 handler 단언이 요청이 컨트롤러까지 갔다는 것을 확인한다
+        // 전제부터 고정한다. 등록자와 토큰의 이메일이 같으면 이 테스트는 위 테스트를
+        // 한 번 더 도는 것에 그친다.
+        assertThat(menu.getEmail()).isNotEqualTo(OwnerToken.테스트_점주_이메일);
+
+        // 예전에는 이 조합이 컨트롤러의 본문 이메일 비교에 걸려 401 이었고, 이 테스트도 그 401 을
+        // 지키고 있었다. 요구사항이 뒤집혀 등록자 이메일은 기록일 뿐 권한 판단에 쓰지 않으므로
+        // 같은 조합이 이제 200 이어야 한다. 등록자 비교가 되살아나는 순간 여기가 깨진다.
         mvc.perform(
                         delete("/api/menu/delete/" + menu.getId())
                                 .with(점주_토큰(accessTokenIssuer))
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {
-                                            "email": "stranger@example.com"
-                                        }
-                                        """)
                 )
                 .andDo(print())
                 .andExpect(handler().handlerType(MenuController.class))
                 .andExpect(handler().methodName("deleteMenu"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(content().string("이메일이 잘못되었거나 삭제 권한이 없습니다."));
+                .andExpect(status().isOk())
+                .andExpect(content().string("삭제되었습니다."));
 
-        // 행이 남아 있다는 것만으로는 이제 아무것도 증명하지 못한다. 소프트 삭제는
-        // 성공해도 행을 남기기 때문이다. 판매중인 채로 남았는지까지 봐야 한다.
+        // 응답만 봐서는 판매 중단이 커밋됐는지 모른다. 행을 다시 읽어 확인한다.
         Menu 커밋된메뉴 = menuRepository.findById(menu.getId()).orElseThrow();
-        assertThat(커밋된메뉴.isDiscontinued()).isFalse();
+        assertThat(커밋된메뉴.isDiscontinued()).isTrue();
     }
 }
