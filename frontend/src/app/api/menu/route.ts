@@ -37,7 +37,6 @@ export async function POST(request: NextRequest) {
 
     // 요청 데이터 검증
     if (
-      !body.email ||
       !body.category ||
       !body.menu_name ||
       typeof body.price !== "number"
@@ -61,7 +60,6 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: body.email,
         category: body.category,
         menuName: body.menu_name,
         price: body.price,
