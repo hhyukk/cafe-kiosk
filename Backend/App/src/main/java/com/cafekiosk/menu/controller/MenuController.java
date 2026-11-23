@@ -1,7 +1,6 @@
 package com.cafekiosk.menu.controller;
 
 import com.cafekiosk.menu.dto.CreateMenuRequestDto;
-import com.cafekiosk.menu.dto.DeleteMenuRequestDto;
 import com.cafekiosk.menu.dto.MenuDto;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.service.MenuService;
@@ -15,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -59,31 +59,28 @@ public class MenuController {
     ) {
         Menu menu = menuService
                 .findById(id).get();
-        boolean ok = menuService.modify(
+        menuService.modify(
                 menu,
                 req.menuName(),
                 req.menuPrice(),
                 req.imgUrl(),
-                req.category(),
-                req.email()
+                req.category()
                 );
-        if(ok){
-            RsData<MenuModifyResponse> rs = new RsData<>(
-                    "200-1",
-                    "메뉴를 수정하였습니다.",
-                    new MenuModifyResponse(menu)
-            );
 
-            return ResponseEntity.ok(rs);
-        }
-        else return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        RsData<MenuModifyResponse> rs = new RsData<>(
+                "200-1",
+                "메뉴를 수정하였습니다.",
+                new MenuModifyResponse(menu)
+        );
 
+        return ResponseEntity.ok(rs);
     }
 
 
     @PostMapping //추가기능
     public ResponseEntity<String> createMenu(
-            @Valid @RequestBody CreateMenuRequestDto req
+            @Valid @RequestBody CreateMenuRequestDto req,
+            Authentication authentication
     ) {
         // 품목 제안 최대 값 10,000,000원 검증
         if (req.getPrice() < 0 || req.getPrice() > 10_000_000) {
@@ -92,23 +89,24 @@ public class MenuController {
                     .body("메뉴 가격은 0원 이상 10,000,000원 이하만 가능합니다.");
         }
 
-        menuService.createMenu(req);
+        // 등록자는 보안 필터가 검증한 토큰에서 꺼낸다. 토큰의 sub 가 이메일이라 getName() 이
+        // 곧 등록자 이메일이다. 그렇게 정한 이유는 AccessTokenIssuer 주석에 있다.
+        // 여기서 신원을 읽는 것은 기록하려는 것이지 권한을 판단하려는 것이 아니다. 누가 이 API 를
+        // 부를 수 있는지는 SecurityConfig 의 경로 표가 이미 정했다.
+        //
+        // 서비스에는 문자열로 넘긴다. 서비스가 보안 컨텍스트를 직접 읽으면 그 메서드가 기대는
+        // 입력 하나가 시그니처에서 사라진다.
+        menuService.createMenu(req, authentication.getName());
         return ResponseEntity.status(HttpStatus.CREATED).body("생성 완료되었습니다.");
     }
 
     @DeleteMapping("/delete/{menu_id}")
     public ResponseEntity<String> deleteMenu(
-            @PathVariable Long menu_id,
-            @RequestBody @Valid DeleteMenuRequestDto req
+            @PathVariable Long menu_id
     ) {
-        req.setMenuId(menu_id);
-
-        boolean ok = menuService.deleteMenu(req);
-
-        if (ok) { //validation 통과
-            return ResponseEntity.status(HttpStatus.OK).body("삭제되었습니다.");
-        }
-        // validation 실패
-         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("이메일이 잘못되었거나 삭제 권한이 없습니다.");
+        // 실패 갈래가 여기 없다. 없거나 이미 판매 중단된 메뉴면 서비스가 예외를 던지고
+        // GlobalExceptionHandler 가 404 로 옮긴다. 이유는 MenuService.deleteMenu 주석에 있다.
+        menuService.deleteMenu(menu_id);
+        return ResponseEntity.status(HttpStatus.OK).body("삭제되었습니다.");
     }
 }

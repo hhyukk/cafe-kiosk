@@ -2,7 +2,6 @@ package com.cafekiosk.menu.service;
 
 
 import com.cafekiosk.menu.dto.CreateMenuRequestDto;
-import com.cafekiosk.menu.dto.DeleteMenuRequestDto;
 import com.cafekiosk.menu.dto.MenuDto;
 import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.repository.MenuRepository;
@@ -15,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -28,7 +28,7 @@ public class MenuService {
     // 조회 경로는 판매중 메뉴만 본다. 판매 중단된 메뉴는 손님 화면 목록에서도 빠지고
     // 점주의 수정 대상에서도 빠진다. 행이 남아 있다는 사실은 과거 주문만 알면 된다.
     public List<Menu> findAll(){
-        return menuRepository.findAllByDeletedAtIsNull();
+        return menuRepository.findAllByDeletedAtIsNullOrderByIdAsc();
     }
 
     /**
@@ -44,7 +44,7 @@ public class MenuService {
      * 그 보장이 OSIV 에 얹힌다. OSIV 를 끄는 날 조용히 N+1 이 되거나 lazy 초기화가 터진다.
      */
     public List<MenuDto.MenuListResponse> findAllWithStock() {
-        List<Menu> menus = menuRepository.findAllByDeletedAtIsNull();
+        List<Menu> menus = menuRepository.findAllByDeletedAtIsNullOrderByIdAsc();
         if (menus.isEmpty()) return List.of();
 
         // 키 중복은 stock.menu_id 유니크가 막는다. toMap 의 기본 동작인 예외를 그대로 둔다.
@@ -64,21 +64,17 @@ public class MenuService {
         return menuRepository.findByIdAndDeletedAtIsNull(id);
     }
 
-    //이메일 유효성 검사 성공시 true 아니면 false
+    // 누가 고치는지 묻지 않는다. 점주 토큰이 있는지는 SecurityConfig 의 경로 표가 이미 봤고,
+    // 등록자 이메일은 기록일 뿐 권한 판단에 쓰지 않는다. 그래서 실패할 갈래가 없어 돌려줄 것도 없다.
     @Transactional
-    public boolean modify(
+    public void modify(
             Menu menu,
             String menuName,
             int menuPrice,
             String imageUrl,
-            String category,
-            String email
+            String category
             ) {
-        if (menu.getEmail().equals(email)) {
-            menu.modify(menuName, menuPrice, imageUrl, category);
-            return true;
-        }
-        else return false;
+        menu.modify(menuName, menuPrice, imageUrl, category);
     }
     // 쓰기 메서드는 클래스 레벨의 readOnly = true 를 반드시 덮어써야 한다.
     // readOnly 트랜잭션에서는 Hibernate 가 flush 를 하지 않아 INSERT 도, 변경 감지가
@@ -94,8 +90,8 @@ public class MenuService {
     // 낙관적 락 재시도는 롤백된 트랜잭션 밖 새 트랜잭션에서 일어나야 하므로(NFR-CON-05)
     // 그 컨트롤러 트랜잭션을 걷어냈고, 서비스가 자기 경계를 직접 갖는다.
     @Transactional
-    public void createMenu(CreateMenuRequestDto req) {
-        Menu menu = new Menu(req.getMenuName(),req.getImageURL(),req.getPrice(),req.getCategory(),req.getEmail());
+    public void createMenu(CreateMenuRequestDto req, String registrantEmail) {
+        Menu menu = new Menu(req.getMenuName(),req.getImageURL(),req.getPrice(),req.getCategory(),registrantEmail);
         menuRepository.save(menu);
 
         // 재고 행을 같은 트랜잭션에서 함께 만든다. docs/ERD.md 3-4 가 재고 없는 메뉴를
@@ -108,21 +104,27 @@ public class MenuService {
     }
 
     /**
-     * 메뉴 삭제. 성공 시 true, 아니면 false 를 돌려준다.
+     * 메뉴 삭제. 행을 지우지 않고 판매를 중단한다.
      *
-     * 행을 지우지 않고 판매를 중단한다. 이미 중단된 메뉴는 조회에서 걸러지므로
-     * 없는 메뉴와 같은 false 가 되고, 컨트롤러가 401 로 바꾼다.
-     * 중단 판단 자체는 Menu.discontinue 가 소유하고 여기서는 부르기만 한다.
+     * 이미 중단된 메뉴는 조회에서 걸러지므로 없는 메뉴와 같은 404 가 된다. 메뉴 수정과
+     * 재고 조정도 판매 중단된 메뉴를 같은 404 로 다룬다.
+     *
+     * 실패할 이유가 대상이 없는 것 하나뿐인 것은 누가 불렀는지를 여기서 따지지 않기 때문이다.
+     * 점주 토큰이 있는지는 SecurityConfig 의 경로 표가 이미 봤고, 등록자 이메일은 권한 판단에
+     * 쓰지 않는다. 한때 이 실패가 401 이었는데, 그건 본문 이메일이 등록자와 다른 경우와 한 갈래로
+     * 묶여 있었기 때문이다. 토큰을 통과한 요청에 401 을 주면 다시 로그인하라는 말이 되는데,
+     * 다시 로그인해도 없는 메뉴는 여전히 없다.
+     *
+     * NoSuchElementException 을 고르는 이유는 GlobalExceptionHandler 가 그것을 404 로 옮기기
+     * 때문이다. 중단 판단 자체는 Menu.discontinue 가 소유하고 여기서는 부르기만 한다.
      */
     @Transactional
-    public boolean deleteMenu(DeleteMenuRequestDto req) {
-        if (req.getMenuId() == null || req.getEmail() == null) return false;
-        return menuRepository.findByIdAndDeletedAtIsNull(req.getMenuId())
-                .filter(menu -> menu.getEmail().equals(req.getEmail()))
-                .map(menu -> {
-                    menu.discontinue();
-                    return true;
-                })
-                .orElse(false);
+    public void deleteMenu(long menuId) {
+        Menu menu = menuRepository.findByIdAndDeletedAtIsNull(menuId)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "존재하지 않는 메뉴입니다: " + menuId
+                ));
+
+        menu.discontinue();
     }
 }

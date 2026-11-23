@@ -22,7 +22,14 @@ import java.util.Optional;
  */
 public interface MenuRepository extends JpaRepository<Menu, Long> {
 
-    List<Menu> findAllByDeletedAtIsNull();
+    // 목록은 등록 순서다. 정렬 기준이 없으면 PostgreSQL 은 행이 저장된 순서대로 돌려주는데,
+    // UPDATE 는 행의 새 버전을 테이블 뒤쪽에 쓰므로 점주가 고친 메뉴가 목록 끝으로 밀린다.
+    // 손님 화면은 받은 순서를 그대로 그리므로 메뉴를 고칠 때마다 화면 배치가 바뀌었다.
+    //
+    // 정렬을 메서드 이름에 넣는다. @Query 에 숨기면 부르는 쪽이 이름만 보고 순서를 알 수 없고,
+    // Sort 를 인자로 받으면 부르는 두 자리가 각자 정렬을 적다가 한쪽만 바뀐다.
+    // id 는 IDENTITY 라 등록할수록 커지고 기본키 인덱스가 이미 있다. MenuControllerTest t06 이 지킨다.
+    List<Menu> findAllByDeletedAtIsNullOrderByIdAsc();
 
     Optional<Menu> findByIdAndDeletedAtIsNull(Long id);
 }

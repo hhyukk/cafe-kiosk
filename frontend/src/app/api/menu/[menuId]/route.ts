@@ -13,18 +13,9 @@ export async function DELETE(
       menuId = segments[segments.length - 1];
     }
 
-    const body = await request.json().catch(() => ({}));
-
     if (!menuId) {
       return NextResponse.json(
         { message: "메뉴 ID가 제공되지 않았습니다." },
-        { status: 400 }
-      );
-    }
-
-    if (!body.email) {
-      return NextResponse.json(
-        { message: "이메일은 필수입니다." },
         { status: 400 }
       );
     }
@@ -33,10 +24,6 @@ export async function DELETE(
       `http://localhost:8080/api/menu/delete/${menuId}`,
       {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email: body.email }),
       }
     );
 
@@ -96,7 +83,7 @@ export async function PUT(
 
     const body = await request.json();
 
-    if (!body.email || !body.category || !body.menu_name || typeof body.price !== "number") {
+    if (!body.category || !body.menu_name || typeof body.price !== "number") {
       return NextResponse.json(
         { message: "필수 필드가 누락되었습니다." },
         { status: 400 }
@@ -116,7 +103,6 @@ export async function PUT(
           price: body.price,
           img_url: body.image ?? "",
           category: body.category,
-          email: body.email,
         }),
       }
     );

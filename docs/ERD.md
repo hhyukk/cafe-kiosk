@@ -138,7 +138,7 @@ deleted_at은 소프트 삭제 컬럼이다. 근거는 `menu/entity/Menu.java`�
 
 boolean이 아니라 nullable timestamp로 두는 이유는 둘이다. 언제 내렸는지가 함께 남고, 판매중 판정이 `deleted_at is null` 한 줄로 끝난다. boolean은 언제인지를 버리면서 컬럼 수는 똑같이 하나를 쓴다.
 
-필터를 거는 자리는 엔티티가 아니라 리포지토리다. `MenuRepository.findAllByDeletedAtIsNull`과 `findByIdAndDeletedAtIsNull`이 그것이고, Hibernate의 `@SQLRestriction`은 쓰지 않는다. 엔티티에 필터를 붙이면 그 엔티티를 읽는 모든 경로에 걸리므로 판매 중단된 메뉴를 참조하는 `order_item`의 연관이 초기화되지 않는다. 참조를 살려 두는 것이 소프트 삭제의 목적인데 그 목적을 정면으로 깬다. 대신 `JpaRepository`가 주는 `findById`와 `findAll`은 필터 없이 남겨, 판매 중단 여부와 무관하게 행 자체를 봐야 하는 자리가 쓴다.
+필터를 거는 자리는 엔티티가 아니라 리포지토리다. `MenuRepository.findAllByDeletedAtIsNullOrderByIdAsc`와 `findByIdAndDeletedAtIsNull`이 그것이고, Hibernate의 `@SQLRestriction`은 쓰지 않는다. 엔티티에 필터를 붙이면 그 엔티티를 읽는 모든 경로에 걸리므로 판매 중단된 메뉴를 참조하는 `order_item`의 연관이 초기화되지 않는다. 참조를 살려 두는 것이 소프트 삭제의 목적인데 그 목적을 정면으로 깬다. 대신 `JpaRepository`가 주는 `findById`와 `findAll`은 필터 없이 남겨, 판매 중단 여부와 무관하게 행 자체를 봐야 하는 자리가 쓴다.
 
 ### 3-4. stock
 

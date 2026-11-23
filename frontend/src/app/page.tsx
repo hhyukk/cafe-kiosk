@@ -51,7 +51,6 @@ export default function Home() {
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [formData, setFormData] = useState({
-    email: "",
     category: "",
     menu_name: "",
     price: "",
@@ -60,7 +59,6 @@ export default function Home() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState({
     id: "",
-    email: "",
     category: "",
     menu_name: "",
     price: "",
@@ -254,7 +252,6 @@ export default function Home() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setFormData({
-      email: "",
       category: "",
       menu_name: "",
       price: "",
@@ -360,7 +357,6 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: formData.email,
           category: formData.category,
           menu_name: formData.menu_name,
           price: parseInt(formData.price, 10),
@@ -390,22 +386,14 @@ export default function Home() {
   const handleDeleteMenu = async (product: Product) => {
     if (isDeleting) return;
 
-    const email = window.prompt("삭제 권한 확인을 위해 이메일을 입력해주세요.");
-    if (!email) return;
-
-    if (!isValidEmail(email)) {
-      alert("유효한 이메일 주소를 입력해주세요.");
-      return;
-    }
+    // 판매 중단은 화면에서 되돌릴 방법이 없어 한 번 더 묻는다. 권한을 묻는 자리가 아니다.
+    // 누가 지울 수 있는지는 백엔드가 점주 토큰으로 판단한다
+    if (!window.confirm(`'${product.name}' 메뉴를 삭제할까요?`)) return;
 
     setIsDeleting(true);
     try {
       const response = await fetch(`/api/menu/${product.id}`, {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email }),
       });
 
       if (response.ok) {
@@ -608,7 +596,6 @@ export default function Home() {
                                     setIsEditModalOpen(true);
                                     setEditForm({
                                       id: product.id,
-                                      email: "",
                                       category: product.category ?? "",
                                       menu_name: product.name,
                                       price: String(product.price),
@@ -738,21 +725,6 @@ export default function Home() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  <label className="block space-y-1">
-                <span className="text-sm font-medium text-slate-700">
-                  이메일
-                </span>
-                    <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleFormChange}
-                        required
-                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-800 outline-none ring-emerald-500/60 transition focus:ring"
-                        placeholder="your@email.com"
-                    />
-                  </label>
-
                   <label className="block space-y-1">
                     <span className="text-sm font-medium text-slate-700">분류</span>
                     <input
@@ -990,7 +962,6 @@ export default function Home() {
                   setIsEditModalOpen(false);
                   setEditForm({
                     id: "",
-                    email: "",
                     category: "",
                     menu_name: "",
                     price: "",
@@ -1011,7 +982,6 @@ export default function Home() {
                         setIsEditModalOpen(false);
                         setEditForm({
                           id: "",
-                          email: "",
                           category: "",
                           menu_name: "",
                           price: "",
@@ -1040,11 +1010,6 @@ export default function Home() {
                     onSubmit={async (e: React.FormEvent) => {
                       e.preventDefault();
                       if (!editForm.id) return;
-
-                      if (!editForm.email || !isValidEmail(editForm.email)) {
-                        alert("유효한 이메일 주소를 입력해주세요.");
-                        return;
-                      }
 
                       const numericPrice = parseInt(editForm.price, 10);
                       if (
@@ -1088,7 +1053,6 @@ export default function Home() {
                             "Content-Type": "application/json",
                           },
                           body: JSON.stringify({
-                            email: editForm.email,
                             category: editForm.category,
                             menu_name: editForm.menu_name,
                             price: numericPrice,
@@ -1097,8 +1061,9 @@ export default function Home() {
                         });
 
                         if (!response.ok) {
+                          // 이제 401 은 토큰이 없다는 뜻 하나다. 본문 이메일로 권한을 가르던 갈래는 백엔드에서 사라졌다
                           if (response.status === 401) {
-                            alert("이메일이 잘못되었습니다.");
+                            alert("로그인이 필요합니다.");
                             return;
                           }
                           const error = await response.json().catch(() => ({}));
@@ -1126,7 +1091,6 @@ export default function Home() {
                         setIsEditModalOpen(false);
                         setEditForm({
                           id: "",
-                          email: "",
                           category: "",
                           menu_name: "",
                           price: "",
@@ -1141,23 +1105,6 @@ export default function Home() {
                     }}
                     className="space-y-4"
                 >
-                  <label className="block space-y-1">
-                <span className="text-sm font-medium text-slate-700">
-                  이메일
-                </span>
-                    <input
-                        type="email"
-                        name="email"
-                        value={editForm.email}
-                        onChange={(e) =>
-                            setEditForm((prev) => ({ ...prev, email: e.target.value }))
-                        }
-                        required
-                        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-800 outline-none ring-emerald-500/60 transition focus:ring"
-                        placeholder="등록 시 사용한 이메일을 입력하세요"
-                    />
-                  </label>
-
                   <label className="block space-y-1">
                     <span className="text-sm font-medium text-slate-700">분류</span>
                     <input
@@ -1266,7 +1213,6 @@ export default function Home() {
                           setIsEditModalOpen(false);
                           setEditForm({
                             id: "",
-                            email: "",
                             category: "",
                             menu_name: "",
                             price: "",
