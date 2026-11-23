@@ -28,7 +28,7 @@ public class MenuService {
     // 조회 경로는 판매중 메뉴만 본다. 판매 중단된 메뉴는 손님 화면 목록에서도 빠지고
     // 점주의 수정 대상에서도 빠진다. 행이 남아 있다는 사실은 과거 주문만 알면 된다.
     public List<Menu> findAll(){
-        return menuRepository.findAllByDeletedAtIsNull();
+        return menuRepository.findAllByDeletedAtIsNullOrderByIdAsc();
     }
 
     /**
@@ -44,7 +44,7 @@ public class MenuService {
      * 그 보장이 OSIV 에 얹힌다. OSIV 를 끄는 날 조용히 N+1 이 되거나 lazy 초기화가 터진다.
      */
     public List<MenuDto.MenuListResponse> findAllWithStock() {
-        List<Menu> menus = menuRepository.findAllByDeletedAtIsNull();
+        List<Menu> menus = menuRepository.findAllByDeletedAtIsNullOrderByIdAsc();
         if (menus.isEmpty()) return List.of();
 
         // 키 중복은 stock.menu_id 유니크가 막는다. toMap 의 기본 동작인 예외를 그대로 둔다.

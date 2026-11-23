@@ -7,6 +7,7 @@ import com.cafekiosk.menu.service.MenuService;
 import com.cafekiosk.stock.entity.Stock;
 import com.cafekiosk.stock.repository.StockRepository;
 import com.cafekiosk.support.AbstractIntegrationTest;
+import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.springframework.http.MediaType;
@@ -17,9 +18,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static com.cafekiosk.support.OwnerToken.점주_토큰;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -163,9 +166,9 @@ public class MenuControllerTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("메뉴 조회 - 남은 재고와 품절 여부가 함께 내려온다")
     void t03() throws Exception {
-        // 인덱스가 아니라 menu_id 로 거는 이유는 findAllByDeletedAtIsNull 에 ORDER BY 가 없고,
-        // 트랜잭션 밖에서 도는 다른 클래스가 남긴 행이 목록에 섞일 수 있어서다.
-        // id 는 이 setup 이 만든 행 하나만 가리킨다.
+        // 인덱스가 아니라 menu_id 로 거는 이유는 트랜잭션 밖에서 도는 다른 클래스가 남긴 행이
+        // 목록에 섞일 수 있어서다. 목록이 menu_id 순으로 정렬돼 있어도 이 setup 의 행이 몇 번째에
+        // 올지는 그 행들에 달려 있다. id 는 이 setup 이 만든 행 하나만 가리킨다.
         ResultActions resultActions = mvc
                 .perform(get("/api/menu"))
                 .andDo(print());
@@ -226,6 +229,41 @@ public class MenuControllerTest extends AbstractIntegrationTest {
                 .andExpect(handler().methodName("deleteMenu"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.resultCode").value("404-1"));
+    }
+
+    @Test
+    @DisplayName("메뉴 조회, 메뉴를 수정해도 목록은 menu_id 오름차순이다")
+    void t06() throws Exception {
+        // PostgreSQL 은 UPDATE 를 하면 그 행의 새 버전을 테이블 뒤쪽에 쓴다. 조회에 정렬 기준이
+        // 없으면 저장된 순서대로 돌려주므로 점주가 고친 메뉴가 목록 끝으로 밀리고, 손님 화면은
+        // 그 순서를 그대로 그린다. setup 이 가장 먼저 심은 메뉴를 고쳐 그 상황을 만든다.
+        mvc.perform(
+                        put("/api/menu/modify/" + 재고있는메뉴.getId())
+                                .with(점주_토큰(accessTokenIssuer))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "menu_name": "이름을 바꾼 망패블",
+                                            "price": 4800,
+                                            "img_url": "tmpImgURL",
+                                            "category": "블렌디드"
+                                        }
+                                        """)
+                )
+                .andExpect(status().isOk());
+
+        // 고친 내용은 아직 이 테스트의 트랜잭션 안에만 있다. 아래 조회가 쿼리를 내기 직전에
+        // Hibernate 가 밀려 있던 UPDATE 를 먼저 내보내므로 조회는 새 버전을 본다.
+        String body = mvc.perform(get("/api/menu"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        // 특정 메뉴가 몇 번째인지가 아니라 전체가 오름차순인지를 본다. 트랜잭션 밖에서 도는
+        // 다른 클래스가 남긴 행이 섞일 수 있어 자리는 이 테스트가 정할 수 없다.
+        List<Long> 메뉴아이디 = JsonPath.<List<Number>>read(body, "$[*].menu_id").stream()
+                .map(Number::longValue)
+                .toList();
+        assertThat(메뉴아이디).isSorted();
     }
 
     // 메뉴 생성과 삭제가 실제로 DB 에 반영되는지는 MenuWriteTransactionTest 가 지킨다.
