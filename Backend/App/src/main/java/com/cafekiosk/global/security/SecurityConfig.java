@@ -27,9 +27,7 @@ import org.springframework.security.web.SecurityFilterChain;
  * 일어나지 않고 열린 채로 배포된다. 실수가 시끄러운 쪽을 고른다.
  *
  * 공개 목록은 docs/API.md 3절 표의 인증 없음 행과 같다. 메서드까지 맞춘다. /api/menu 는 GET 만
- * 손님 것이고 POST 는 점주 것이다. /api/order/list 는 이메일로 남의 주문을 통째 조회할 수 있는
- * 경로라 손님 화면이 대기번호 조회로 옮겨 가면 사라질 자리지만, 그때까지는 화면이 쓰므로 연다.
- * 이 목록과 표가 어긋나는 순간은 SecurityConfigTest 가 잡는다.
+ * 손님 것이고 POST 는 점주 것이다. 이 목록과 표가 어긋나는 순간은 SecurityConfigTest 가 잡는다.
  *
  * /api/order/{orderNumber} 도 GET 만 손님 것이다. 경로 변수는 경로 한 칸만 잡으므로 한 칸 더 깊은
  * /api/order/{orderId}/status 는 이 줄에 걸리지 않는다. 거꾸로 /api/order/ 바로 아래 한 칸짜리
@@ -82,7 +80,7 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/menu").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/order", "/api/order/list").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/order").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/order/{orderNumber}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/uploads/**").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()

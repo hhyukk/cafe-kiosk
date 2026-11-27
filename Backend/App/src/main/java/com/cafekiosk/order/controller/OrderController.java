@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-@Tag(name = "Order API", description = "카페 주문 생성 및 고객별 주문 내역 조회를 담당하는 API입니다.")
+@Tag(name = "Order API", description = "주문 생성과 대기번호 조회, 주방의 주문 목록과 상태 전이를 담당하는 API입니다.")
 @RestController
 @RequiredArgsConstructor
 public class OrderController {
@@ -68,20 +68,6 @@ public class OrderController {
         }
 
         return ResponseEntity.ok(orderFacade.createOrder(request).value());
-    }
-
-    @PostMapping("/api/order/list")
-    public ResponseEntity<OrderDto.OrderListResponse> orderList(
-            @Parameter(description = "조회할 고객의 이메일", example = "user@example.com")
-            @Valid
-            @RequestBody OrderDto.OrderListRequest request
-    ) {
-        OrderDto.OrderListResponse response = orderService.getOrderList(request.email());
-        if (response.orders().isEmpty()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        return ResponseEntity.ok(response);
     }
 
     @Operation(

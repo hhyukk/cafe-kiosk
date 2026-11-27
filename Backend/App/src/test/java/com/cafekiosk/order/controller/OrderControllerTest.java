@@ -167,42 +167,6 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("주문 내역 조회 - POST /api/order/list")
-    void t01_getOrderList() throws Exception {
-        // given
-        String email = "order@example.com";
-        String json = """
-                {
-                  "email": "%s"
-                }
-                """.formatted(email);
-
-        OrderDto.OrderListResponse expected = orderService.getOrderList(email);
-
-        // when
-        ResultActions resultActions = mvc
-                .perform(
-                        post("/api/order/list")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(json)
-                )
-                .andDo(print());
-
-        // then: OrderListResponse > orders[0](OrderSummary) > items[0](OrderItemDTO) 구조
-        resultActions
-                .andExpect(handler().handlerType(OrderController.class))
-                .andExpect(handler().methodName("orderList"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.email").value(expected.email()))
-                .andExpect(jsonPath("$.orders.length()").value(expected.orders().size()))
-                .andExpect(jsonPath("$.orders[0].orderNumber").value(expected.orders().get(0).orderNumber()))
-                .andExpect(jsonPath("$.orders[0].totalPrice").value(expected.orders().get(0).totalPrice()))
-                .andExpect(jsonPath("$.orders[0].items[0].menuName").value(expected.orders().get(0).items().get(0).menuName()))
-                .andExpect(jsonPath("$.orders[0].items[0].orderPrice").value(expected.orders().get(0).items().get(0).orderPrice()))
-                .andExpect(jsonPath("$.orders[0].items[0].count").value(expected.orders().get(0).items().get(0).count()));
-    }
-
-    @Test
     @DisplayName("대기번호로 주문 조회 - 토큰 없이 상태와 품목이 내려오고 손님 이메일과 주문 id 는 실리지 않는다")
     void should_대기번호로_주문의_상태와_품목을_토큰_없이_조회한다() throws Exception {
         // 토큰을 싣지 않는다. 이 요청이 200 인 것이 손님 경로가 열려 있다는 증명을 겸한다

@@ -12,7 +12,6 @@ import com.cafekiosk.order.entity.OrderItem;
 import com.cafekiosk.order.repository.OrderItemRepository;
 import com.cafekiosk.stock.entity.Stock;
 import com.cafekiosk.stock.lock.StockLockStrategy;
-import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -21,9 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -212,38 +209,6 @@ public class OrderService {
             Stock stock = stockLockStrategy.acquire(item.getMenu().getId());
             stock.increase(item.getCount());
         }
-    }
-
-    @Transactional(readOnly = true)
-    public OrderDto.OrderListResponse getOrderList(@NotNull String email) {
-        // email을 기준으로 해당 고객의 주문 상품 목록 조회
-        List<OrderItem> orderItemList = orderItemRepository.findByOrderCustomerEmail(email);
-
-        if (orderItemList.isEmpty()) {
-            // 주문 내역이 없으면 빈 리스트를 반환
-            return new OrderDto.OrderListResponse(email, List.of());
-        }
-
-        // 주문(대기번호)별로 OrderItemDTO 리스트를 그룹핑
-        Map<Order, List<OrderDto.OrderItemDTO>> orderMap = new LinkedHashMap<>();
-
-        for (OrderItem orderItem : orderItemList) {
-            Order order = orderItem.getOrder();
-            orderMap
-                    .computeIfAbsent(order, o -> new ArrayList<>())
-                    .add(toItemDTO(orderItem));
-        }
-
-        List<OrderDto.OrderSummary> summaries = new ArrayList<>();
-        for (Map.Entry<Order, List<OrderDto.OrderItemDTO>> entry : orderMap.entrySet()) {
-            summaries.add(toOrderSummary(entry.getKey(), entry.getValue()));
-        }
-
-        // 이메일 기준 전체 주문 묶음 반환
-        return new OrderDto.OrderListResponse(
-                email,
-                summaries
-        );
     }
 
     /**
