@@ -131,6 +131,17 @@ public class SecurityConfigTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    @DisplayName("대기번호 조회를 여는 매처는 경로 한 칸만 열어 그 아래 경로는 토큰 없이 401 이다")
+    void should_대기번호_조회_매처는_경로_한_칸만_연다() throws Exception {
+        // 상태 전이와 같은 깊이의 경로다. 매처가 /api/order/** 처럼 넓어지면 이 요청이 인가를 통과해
+        // 401 대신 405 를 받는다. 이 경로에는 GET 핸들러가 없고 PATCH 만 있기 때문이다
+        mvc.perform(get("/api/order/1/status"))
+                .andDo(print())
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.resultCode").value("401-1"));
+    }
+
     // 운영 토큰과 클레임 모양이 같고 서명 키와 만료 시각만 고를 수 있는 토큰
     private String 토큰(JwtEncoder encoder, Instant expiresAt) {
         JwtClaimsSet claims = JwtClaimsSet.builder()

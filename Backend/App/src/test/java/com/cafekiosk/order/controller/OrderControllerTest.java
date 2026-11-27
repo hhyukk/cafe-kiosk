@@ -203,6 +203,41 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("대기번호로 주문 조회 - 토큰 없이 상태와 품목이 내려오고 손님 이메일과 주문 id 는 실리지 않는다")
+    void should_대기번호로_주문의_상태와_품목을_토큰_없이_조회한다() throws Exception {
+        // 토큰을 싣지 않는다. 이 요청이 200 인 것이 손님 경로가 열려 있다는 증명을 겸한다
+        mvc.perform(get("/api/order/{orderNumber}", seededOrderNumber))
+                .andDo(print())
+                .andExpect(handler().handlerType(OrderController.class))
+                .andExpect(handler().methodName("getOrderByNumber"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
+                .andExpect(jsonPath("$.data.orderNumber").value(seededOrderNumber))
+                .andExpect(jsonPath("$.data.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.data.orderTime").isNotEmpty())
+                // 아메리카노(3000) x2 + 카페라떼(4000) x1 = 10,000원
+                .andExpect(jsonPath("$.data.totalPrice").value(10000))
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                // 필드 이름까지 본다. 화면과 BFF 가 이 이름으로 읽는다
+                .andExpect(jsonPath("$.data.items[0].menuName").value("아메리카노"))
+                .andExpect(jsonPath("$.data.items[0].orderPrice").value(3000))
+                .andExpect(jsonPath("$.data.items[0].count").value(2))
+                // 인증 없이 열린 응답이다. 누가 주문했는지와 점주 API 의 손잡이는 여기 실리면 안 된다
+                .andExpect(jsonPath("$.data.email").doesNotExist())
+                .andExpect(jsonPath("$.data.orderId").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("대기번호로 주문 조회 - 없는 번호는 404 이고 RsData 봉투로 나간다")
+    void should_없는_대기번호는_404다() throws Exception {
+        // PK 가 1 부터 채번되고 assignOrderNumber 가 id 0 을 막으므로 0000 은 어떤 주문에도 붙지 않는다
+        mvc.perform(get("/api/order/{orderNumber}", "0000"))
+                .andDo(print())
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.resultCode").value("404-1"));
+    }
+
+    @Test
     @DisplayName("주문 생성 성공 - 신규 고객")
     void t1() throws Exception {
         String requestBody = String.format("""

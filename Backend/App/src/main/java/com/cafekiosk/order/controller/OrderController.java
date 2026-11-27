@@ -32,7 +32,7 @@ public class OrderController {
     private final OrderService orderService;
 
     // 재고에 닿는 두 경로는 파사드를 거친다. 낙관적 락 재시도가 롤백된 트랜잭션 밖
-    // 새 트랜잭션에서 일어나야 하기 때문이다. 조회 둘은 재고를 건드리지 않으므로
+    // 새 트랜잭션에서 일어나야 하기 때문이다. 조회는 재고를 건드리지 않으므로
     // 서비스를 그대로 부른다. 파사드를 거쳐 봐야 재시도할 일이 없다.
     private final OrderFacade orderFacade;
 
@@ -82,6 +82,27 @@ public class OrderController {
         }
 
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+            summary = "대기번호로 주문 조회",
+            description = "손님이 주문할 때 받은 대기번호로 주문 하나의 상태와 품목을 조회합니다. 인증하지 않습니다. "
+                    + "응답에 손님 이메일과 내부 주문 id 는 담기지 않습니다."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200-1", description = "주문 조회 성공"),
+            @ApiResponse(responseCode = "404-1", description = "그 대기번호의 주문이 없음")
+    })
+    @GetMapping("/api/order/{orderNumber}")
+    public RsData<OrderDto.OrderLookupResponse> getOrderByNumber(
+            @Parameter(description = "주문할 때 받은 대기번호", example = "0007")
+            @PathVariable String orderNumber
+    ) {
+        return new RsData<>(
+                "200-1",
+                "주문 조회 성공",
+                orderService.getOrderByNumber(orderNumber)
+        );
     }
 
     @Operation(
