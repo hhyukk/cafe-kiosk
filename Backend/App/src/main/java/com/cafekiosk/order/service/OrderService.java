@@ -24,6 +24,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 
 
@@ -242,6 +243,35 @@ public class OrderService {
         return new OrderDto.OrderListResponse(
                 email,
                 summaries
+        );
+    }
+
+    /**
+     * 손님이 받은 대기번호로 주문 하나를 돌려준다. 없는 번호는 404 다.
+     *
+     * 번호를 0 으로 채워 맞춰 주지 않는다. 7 을 넣으면 0007 을 찾지 않고 404 다. 번호의 형식은
+     * Order.assignOrderNumber 한곳이 정하는데, 여기서 그 형식을 흉내 내면 규칙이 두 곳이 된다.
+     *
+     * NoSuchElementException 은 GlobalExceptionHandler 가 404 로 옮기는 예외다. 메뉴 수정과
+     * 삭제가 같은 방식을 쓴다.
+     */
+    @Transactional(readOnly = true)
+    public OrderDto.OrderLookupResponse getOrderByNumber(String orderNumber) {
+        Order order = orderRepository.findByOrderNumber(orderNumber)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "존재하지 않는 주문입니다: " + orderNumber
+                ));
+
+        List<OrderDto.OrderItemDTO> items = order.getOrderItems().stream()
+                .map(this::toItemDTO)
+                .toList();
+
+        return new OrderDto.OrderLookupResponse(
+                order.getOrderNumber(),
+                order.getStatus(),
+                order.getOrderTime(),
+                order.getTotalPrice(),
+                items
         );
     }
 

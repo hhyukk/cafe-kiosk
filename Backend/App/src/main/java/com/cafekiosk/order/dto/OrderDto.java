@@ -83,4 +83,19 @@ public class OrderDto {
             @NotNull List<OrderItemDTO> items
     ) {
     }
+
+    // 손님이 대기번호로 조회할 때의 응답. 인증 없이 열린 경로라 무엇을 내보내는지를 이 타입이 고정한다.
+    //
+    // 주방이 읽는 OrderSummary 와 필드가 거의 같은데도 타입을 나눈다. 한 타입을 같이 쓰면 주방 쪽에
+    // 필드를 더하는 순간 익명 응답에도 그 필드가 실린다. 손님에게 열린 주문 응답에 email 이 실리는
+    // 일이 실제로 있었다. orderId 를 빼는 것도 같은 이유다. 그 값은 점주 API 인 상태 전이가 주문을
+    // 집는 손잡이라 손님 계약에 섞지 않는다.
+    public record OrderLookupResponse(
+            @NotNull String orderNumber,
+            @NotNull OrderStatus status,
+            @NotNull LocalDateTime orderTime,
+            @NotNull int totalPrice,
+            @NotNull List<OrderItemDTO> items
+    ) {
+    }
 }

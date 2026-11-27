@@ -69,6 +69,9 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     private Menu menu1;
     private Menu menu2;
 
+    // setup 이 만든 주문의 대기번호. 점주의 상태 전이는 seededOrderId() 의 id 로, 손님 조회는 이 번호로 한다
+    private String seededOrderNumber;
+
     // 서비스까지 닿는 이메일 전부. 손님 행은 CustomerService 가 주문과 따로 커밋하므로
     // 이 클래스의 롤백에 실리지 않는다. 주문이 400 으로 실패하는 test@test.com 도 손님 행은 남는다.
     // existing@test.com 은 테스트 트랜잭션 안에서 만들어 함께 롤백되지만 빠짐없이 적는다.
@@ -103,7 +106,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                         new OrderDto.OrderItemRequest(menu2.getId(), 1)
                 )
         );
-        orderService.createOrder(createRequest);
+        seededOrderNumber = orderService.createOrder(createRequest).orderNumber();
     }
 
     /**
@@ -324,11 +327,9 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @DisplayName("가격 스냅샷 - 메뉴 가격을 바꿔도 과거 주문 금액은 변하지 않는다")
     void 가격스냅샷_메뉴가격변경이_과거주문에_소급되지_않는다() {
         // given: setup()이 심은 주문: 아메리카노(3000) x2 + 카페라떼(4000) x1 = 10,000원
-        String email = "order@example.com";
-
-        OrderDto.OrderListResponse 주문직후 = orderService.getOrderList(email);
-        assertThat(주문직후.orders().get(0).totalPrice()).isEqualTo(10000);
-        assertThat(주문직후.orders().get(0).items())
+        OrderDto.OrderLookupResponse 주문직후 = orderService.getOrderByNumber(seededOrderNumber);
+        assertThat(주문직후.totalPrice()).isEqualTo(10000);
+        assertThat(주문직후.items())
                 .extracting(OrderDto.OrderItemDTO::orderPrice)
                 .containsExactly(3000, 4000);
 
@@ -339,9 +340,9 @@ public class OrderControllerTest extends AbstractIntegrationTest {
 
         // then: 이미 지나간 주문의 금액은 그대로여야 한다.
         // 스냅샷이 없다면 여기서 27,000원(9000x2 + 9000x1)이 나온다.
-        OrderDto.OrderListResponse 가격인상후 = orderService.getOrderList(email);
-        assertThat(가격인상후.orders().get(0).totalPrice()).isEqualTo(10000);
-        assertThat(가격인상후.orders().get(0).items())
+        OrderDto.OrderLookupResponse 가격인상후 = orderService.getOrderByNumber(seededOrderNumber);
+        assertThat(가격인상후.totalPrice()).isEqualTo(10000);
+        assertThat(가격인상후.items())
                 .extracting(OrderDto.OrderItemDTO::orderPrice)
                 .containsExactly(3000, 4000);
     }
@@ -350,10 +351,8 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @DisplayName("이름 스냅샷 - 메뉴 이름을 바꿔도 과거 주문의 품목명은 변하지 않는다")
     void 이름스냅샷_메뉴이름변경이_과거주문에_소급되지_않는다() {
         // given: setup()이 심은 주문의 품목은 아메리카노와 카페라떼다
-        String email = "order@example.com";
-
-        OrderDto.OrderListResponse 주문직후 = orderService.getOrderList(email);
-        assertThat(주문직후.orders().get(0).items())
+        OrderDto.OrderLookupResponse 주문직후 = orderService.getOrderByNumber(seededOrderNumber);
+        assertThat(주문직후.items())
                 .extracting(OrderDto.OrderItemDTO::menuName)
                 .containsExactly("아메리카노", "카페라떼");
 
@@ -364,8 +363,8 @@ public class OrderControllerTest extends AbstractIntegrationTest {
 
         // then: 이미 지나간 주문의 품목명은 그대로여야 한다.
         // 스냅샷이 없다면 여기서 아이스 아메리카노와 바닐라 라떼가 나온다.
-        OrderDto.OrderListResponse 이름변경후 = orderService.getOrderList(email);
-        assertThat(이름변경후.orders().get(0).items())
+        OrderDto.OrderLookupResponse 이름변경후 = orderService.getOrderByNumber(seededOrderNumber);
+        assertThat(이름변경후.items())
                 .extracting(OrderDto.OrderItemDTO::menuName)
                 .containsExactly("아메리카노", "카페라떼");
     }
@@ -373,17 +372,13 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("소프트 삭제 - 판매를 중단한 메뉴의 과거 주문도 온전히 조회된다")
     void 판매중단된_메뉴의_과거주문이_그대로_조회된다() {
-        // given
-        String email = "order@example.com";
-
         // when: 점주가 아메리카노 판매를 중단한다.
         // 하드 삭제였다면 order_item.menu_id 외래키에 걸려 이 자리에서 죽는다.
         menu1.discontinue();
         menuRepository.save(menu1);
 
         // then: 이름도 금액도 총액도 그대로다. 조회 경로가 menu 행을 읽지 않기 때문이다
-        OrderDto.OrderListResponse 판매중단후 = orderService.getOrderList(email);
-        OrderDto.OrderSummary 주문 = 판매중단후.orders().get(0);
+        OrderDto.OrderLookupResponse 주문 = orderService.getOrderByNumber(seededOrderNumber);
 
         assertThat(주문.totalPrice()).isEqualTo(10000);
         assertThat(주문.items())
