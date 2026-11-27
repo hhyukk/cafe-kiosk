@@ -99,7 +99,7 @@ com.cafekiosk
 - **MockMvc를 `MockMvcBuilders`로 손으로 만들지 않는다.** 보안 필터가 빠져 점주 API가 토큰 없이 200을 낸다. `@AutoConfigureMockMvc`가 만든 것을 주입받는다.
 - JWT 서명 키는 `AbstractIntegrationTest`가 JVM마다 난수로 넣는다. `application-test.yml`에 키를 적지 않는다. 그 파일은 `src/main/resources`에 있어 jar에 실린다.
 
-회귀 방지선이 여섯 있다. `OrderControllerTest`의 가격 스냅샷 테스트는 조회 경로가 `orderItem.getOrderPrice` 대신 `getMenu().getMenuPrice`를 읽는 순간 잡아낸다. `FileUploadControllerTest`는 업로드 응답 URL에 호스트가 붙는 순간 잡아낸다. `MenuWriteTransactionTest`는 메뉴 생성과 수정과 삭제가 readOnly 트랜잭션에 갇혀 SQL이 조용히 사라지는 순간, 메뉴 등록이 재고 행을 함께 만들지 않게 되는 순간, 그리고 등록자가 토큰의 이메일로 기록되지 않거나 삭제에 등록자 비교가 되살아나는 순간 잡아낸다. `OrderStockTest`는 재고 부족 주문이 부분 차감을 남기는 순간 잡아낸다. `StockControllerTest`는 재고 조정이 준영속 엔티티 위에서 사라져 200만 나가는 순간 잡아낸다. `SecurityConfigTest`는 점주 API가 토큰 없이 열리거나 손님 경로가 잠기거나 401이 RsData 봉투를 잃는 순간 잡아낸다.
+회귀 방지선이 여섯 있다. `OrderControllerTest`의 가격 스냅샷 테스트는 조회 경로가 `orderItem.getOrderPrice` 대신 `getMenu().getMenuPrice`를 읽는 순간 잡아내고, 대기번호 조회 테스트는 손님에게 열린 응답에 이메일이나 orderId가 실리는 순간 잡아낸다. `FileUploadControllerTest`는 업로드 응답 URL에 호스트가 붙는 순간 잡아낸다. `MenuWriteTransactionTest`는 메뉴 생성과 수정과 삭제가 readOnly 트랜잭션에 갇혀 SQL이 조용히 사라지는 순간, 메뉴 등록이 재고 행을 함께 만들지 않게 되는 순간, 그리고 등록자가 토큰의 이메일로 기록되지 않거나 삭제에 등록자 비교가 되살아나는 순간 잡아낸다. `OrderStockTest`는 재고 부족 주문이 부분 차감을 남기는 순간 잡아낸다. `StockControllerTest`는 재고 조정이 준영속 엔티티 위에서 사라져 200만 나가는 순간 잡아낸다. `SecurityConfigTest`는 점주 API가 토큰 없이 열리거나 손님 경로가 잠기거나 401이 RsData 봉투를 잃는 순간 잡아낸다.
 
 **검증 대상이 트랜잭션 경계이면 테스트에 `@Transactional`을 붙이지 않는다.** 붙이는 순간 테스트가 read-write 트랜잭션을 먼저 열어, 서비스의 `readOnly = true`가 거기 참여만 하고 속성이 무시된다. 잡으려던 결함이 통째로 가려진다. `MenuWriteTransactionTest`가 `@Transactional` 없이 서서 만든 행을 `@AfterEach`로 직접 지우는 이유가 이것이다.
 
@@ -137,10 +137,10 @@ Next 16이라 라우트 핸들러의 `params`는 `Promise`다. `context: { param
 | BFF가 토큰을 다루지 않아 화면의 메뉴 등록, 수정, 삭제, 이미지 업로드가 401을 받는다. 그동안 메뉴 관리는 Swagger로 한다 | `frontend/src/app/api/menu/`, `page.tsx` |
 | 응답 봉투가 섞여 있다. 맨 배열, 평문 문자열, Map, 봉투 없는 DTO. 새 코드는 `RsData`로 통일한다 | `MenuController`, `FileUploadController` |
 | CORS 허용 메서드에 PATCH가 없다. 브라우저가 상태 변경을 직접 부르면 막힌다 | `global/config/WebConfig.java` |
-| `page.tsx`가 1240줄 단일 클라이언트 컴포넌트다. 국소 수정만 하고 전체를 다시 쓰지 않는다 | `frontend/src/app/page.tsx` |
-| 이미지 업로드 두 곳이 BFF를 건너뛰고 8080을 직접 부른다 | `page.tsx:323`, `page.tsx:1032` |
+| `page.tsx`가 1239줄 단일 클라이언트 컴포넌트다. 국소 수정만 하고 전체를 다시 쓰지 않는다 | `frontend/src/app/page.tsx` |
+| 이미지 업로드 두 곳이 BFF를 건너뛰고 8080을 직접 부른다 | `page.tsx:334`, `page.tsx:1031` |
 | `http://localhost:8080`이 10곳에 하드코딩돼 있다. 환경 변수 사용은 0회다 | 프론트 전역, `next.config.ts` 포함 |
-| 관리자 기능이 손님 화면에 섞여 있다. 메뉴 등록, 수정, 삭제 버튼이 손님에게 그대로 보인다. 관리자 기능을 손님 화면에 새로 추가하지 않는다 | `page.tsx:475`, `page.tsx:527`, `page.tsx:606` |
+| 관리자 기능이 손님 화면에 섞여 있다. 메뉴 등록, 수정, 삭제 버튼이 손님에게 그대로 보인다. 관리자 기능을 손님 화면에 새로 추가하지 않는다 | `page.tsx:488`, `page.tsx:540`, `page.tsx:619` |
 
 컴포넌트 분리는 그 자체로 별도 작업이지 다른 변경에 끼워 넣을 일이 아니다.
 
