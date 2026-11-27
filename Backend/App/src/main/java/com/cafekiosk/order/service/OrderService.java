@@ -12,7 +12,6 @@ import com.cafekiosk.order.entity.OrderItem;
 import com.cafekiosk.order.repository.OrderItemRepository;
 import com.cafekiosk.stock.entity.Stock;
 import com.cafekiosk.stock.lock.StockLockStrategy;
-import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -21,9 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 
 
@@ -213,35 +211,32 @@ public class OrderService {
         }
     }
 
+    /**
+     * 손님이 받은 대기번호로 주문 하나를 돌려준다. 없는 번호는 404 다.
+     *
+     * 번호를 0 으로 채워 맞춰 주지 않는다. 7 을 넣으면 0007 을 찾지 않고 404 다. 번호의 형식은
+     * Order.assignOrderNumber 한곳이 정하는데, 여기서 그 형식을 흉내 내면 규칙이 두 곳이 된다.
+     *
+     * NoSuchElementException 은 GlobalExceptionHandler 가 404 로 옮기는 예외다. 메뉴 수정과
+     * 삭제가 같은 방식을 쓴다.
+     */
     @Transactional(readOnly = true)
-    public OrderDto.OrderListResponse getOrderList(@NotNull String email) {
-        // email을 기준으로 해당 고객의 주문 상품 목록 조회
-        List<OrderItem> orderItemList = orderItemRepository.findByOrderCustomerEmail(email);
+    public OrderDto.OrderLookupResponse getOrderByNumber(String orderNumber) {
+        Order order = orderRepository.findByOrderNumber(orderNumber)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "존재하지 않는 주문입니다: " + orderNumber
+                ));
 
-        if (orderItemList.isEmpty()) {
-            // 주문 내역이 없으면 빈 리스트를 반환
-            return new OrderDto.OrderListResponse(email, List.of());
-        }
+        List<OrderDto.OrderItemDTO> items = order.getOrderItems().stream()
+                .map(this::toItemDTO)
+                .toList();
 
-        // 주문(대기번호)별로 OrderItemDTO 리스트를 그룹핑
-        Map<Order, List<OrderDto.OrderItemDTO>> orderMap = new LinkedHashMap<>();
-
-        for (OrderItem orderItem : orderItemList) {
-            Order order = orderItem.getOrder();
-            orderMap
-                    .computeIfAbsent(order, o -> new ArrayList<>())
-                    .add(toItemDTO(orderItem));
-        }
-
-        List<OrderDto.OrderSummary> summaries = new ArrayList<>();
-        for (Map.Entry<Order, List<OrderDto.OrderItemDTO>> entry : orderMap.entrySet()) {
-            summaries.add(toOrderSummary(entry.getKey(), entry.getValue()));
-        }
-
-        // 이메일 기준 전체 주문 묶음 반환
-        return new OrderDto.OrderListResponse(
-                email,
-                summaries
+        return new OrderDto.OrderLookupResponse(
+                order.getOrderNumber(),
+                order.getStatus(),
+                order.getOrderTime(),
+                order.getTotalPrice(),
+                items
         );
     }
 

@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -129,6 +130,31 @@ public class SecurityConfigTest extends AbstractIntegrationTest {
     void should_공개_경로는_토큰_없이_열린다(String path) throws Exception {
         mvc.perform(get(path))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("대기번호 조회를 여는 매처는 경로 한 칸만 열어 그 아래 경로는 토큰 없이 401 이다")
+    void should_대기번호_조회_매처는_경로_한_칸만_연다() throws Exception {
+        // 상태 전이와 같은 깊이의 경로다. 매처가 /api/order/** 처럼 넓어지면 이 요청이 인가를 통과해
+        // 401 대신 405 를 받는다. 이 경로에는 GET 핸들러가 없고 PATCH 만 있기 때문이다
+        mvc.perform(get("/api/order/1/status"))
+                .andDo(print())
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.resultCode").value("401-1"));
+    }
+
+    @Test
+    @DisplayName("이메일로 남의 주문을 통째 조회하던 경로는 토큰 없이 부르면 401 이다")
+    void should_이메일로_주문을_통째_조회하던_경로는_닫혀_있다() throws Exception {
+        // 손님 화면이 대기번호 조회로 옮겨 가며 없앤 경로다. 핸들러를 지우는 것으로 끝나지 않고 공개
+        // 목록에서도 빠져야 한다. 목록에 남아 있으면 같은 경로에 핸들러가 다시 생기는 순간 토큰 없이
+        // 열린다. 없애기 전에는 이 요청이 컨트롤러까지 가서 그 이메일의 주문 내역을 돌려줬다
+        mvc.perform(request(HttpMethod.POST, "/api/order/list")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\": \"someone@example.com\"}"))
+                .andDo(print())
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.resultCode").value("401-1"));
     }
 
     // 운영 토큰과 클레임 모양이 같고 서명 키와 만료 시각만 고를 수 있는 토큰

@@ -50,12 +50,6 @@ public class OrderDto {
         }
     }
 
-    public record OrderListRequest(
-            @NotNull String email
-    ){ //주문 내역을 요청하는 DTO, 이메일을 포함한다
-
-    }
-
     // orderPrice = 주문 시점 가격 스냅샷. 현재 메뉴 가격이 아니다.
     public record OrderItemDTO(
             @NotNull String menuName,
@@ -65,17 +59,25 @@ public class OrderDto {
 
     }
 
-    // 이메일 기준 전체 주문 내역 조회 응답
-    public record OrderListResponse(
-            @NotNull String email,
-            @NotNull List<OrderSummary> orders
-    ) { // 이메일별 주문 묶음을 반환한다
-    }
-
     // 개별 주문(대기번호별) 요약 + 해당 주문의 아이템 목록
     // orderId, status, orderTime 은 주방 화면이 읽을 데이터다.
     public record OrderSummary(
             @NotNull Long orderId,
+            @NotNull String orderNumber,
+            @NotNull OrderStatus status,
+            @NotNull LocalDateTime orderTime,
+            @NotNull int totalPrice,
+            @NotNull List<OrderItemDTO> items
+    ) {
+    }
+
+    // 손님이 대기번호로 조회할 때의 응답. 인증 없이 열린 경로라 무엇을 내보내는지를 이 타입이 고정한다.
+    //
+    // 주방이 읽는 OrderSummary 와 필드가 거의 같은데도 타입을 나눈다. 한 타입을 같이 쓰면 주방 쪽에
+    // 필드를 더하는 순간 익명 응답에도 그 필드가 실린다. 손님에게 열린 주문 응답에 email 이 실리는
+    // 일이 실제로 있었다. orderId 를 빼는 것도 같은 이유다. 그 값은 점주 API 인 상태 전이가 주문을
+    // 집는 손잡이라 손님 계약에 섞지 않는다.
+    public record OrderLookupResponse(
             @NotNull String orderNumber,
             @NotNull OrderStatus status,
             @NotNull LocalDateTime orderTime,

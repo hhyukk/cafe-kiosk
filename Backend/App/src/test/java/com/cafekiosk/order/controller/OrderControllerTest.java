@@ -69,6 +69,9 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     private Menu menu1;
     private Menu menu2;
 
+    // setup 이 만든 주문의 대기번호. 점주의 상태 전이는 seededOrderId() 의 id 로, 손님 조회는 이 번호로 한다
+    private String seededOrderNumber;
+
     // 서비스까지 닿는 이메일 전부. 손님 행은 CustomerService 가 주문과 따로 커밋하므로
     // 이 클래스의 롤백에 실리지 않는다. 주문이 400 으로 실패하는 test@test.com 도 손님 행은 남는다.
     // existing@test.com 은 테스트 트랜잭션 안에서 만들어 함께 롤백되지만 빠짐없이 적는다.
@@ -103,7 +106,7 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                         new OrderDto.OrderItemRequest(menu2.getId(), 1)
                 )
         );
-        orderService.createOrder(createRequest);
+        seededOrderNumber = orderService.createOrder(createRequest).orderNumber();
     }
 
     /**
@@ -164,39 +167,38 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("주문 내역 조회 - POST /api/order/list")
-    void t01_getOrderList() throws Exception {
-        // given
-        String email = "order@example.com";
-        String json = """
-                {
-                  "email": "%s"
-                }
-                """.formatted(email);
-
-        OrderDto.OrderListResponse expected = orderService.getOrderList(email);
-
-        // when
-        ResultActions resultActions = mvc
-                .perform(
-                        post("/api/order/list")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(json)
-                )
-                .andDo(print());
-
-        // then: OrderListResponse > orders[0](OrderSummary) > items[0](OrderItemDTO) 구조
-        resultActions
+    @DisplayName("대기번호로 주문 조회 - 토큰 없이 상태와 품목이 내려오고 손님 이메일과 주문 id 는 실리지 않는다")
+    void should_대기번호로_주문의_상태와_품목을_토큰_없이_조회한다() throws Exception {
+        // 토큰을 싣지 않는다. 이 요청이 200 인 것이 손님 경로가 열려 있다는 증명을 겸한다
+        mvc.perform(get("/api/order/{orderNumber}", seededOrderNumber))
+                .andDo(print())
                 .andExpect(handler().handlerType(OrderController.class))
-                .andExpect(handler().methodName("orderList"))
+                .andExpect(handler().methodName("getOrderByNumber"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.email").value(expected.email()))
-                .andExpect(jsonPath("$.orders.length()").value(expected.orders().size()))
-                .andExpect(jsonPath("$.orders[0].orderNumber").value(expected.orders().get(0).orderNumber()))
-                .andExpect(jsonPath("$.orders[0].totalPrice").value(expected.orders().get(0).totalPrice()))
-                .andExpect(jsonPath("$.orders[0].items[0].menuName").value(expected.orders().get(0).items().get(0).menuName()))
-                .andExpect(jsonPath("$.orders[0].items[0].orderPrice").value(expected.orders().get(0).items().get(0).orderPrice()))
-                .andExpect(jsonPath("$.orders[0].items[0].count").value(expected.orders().get(0).items().get(0).count()));
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
+                .andExpect(jsonPath("$.data.orderNumber").value(seededOrderNumber))
+                .andExpect(jsonPath("$.data.status").value("CONFIRMED"))
+                .andExpect(jsonPath("$.data.orderTime").isNotEmpty())
+                // 아메리카노(3000) x2 + 카페라떼(4000) x1 = 10,000원
+                .andExpect(jsonPath("$.data.totalPrice").value(10000))
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                // 필드 이름까지 본다. 화면과 BFF 가 이 이름으로 읽는다
+                .andExpect(jsonPath("$.data.items[0].menuName").value("아메리카노"))
+                .andExpect(jsonPath("$.data.items[0].orderPrice").value(3000))
+                .andExpect(jsonPath("$.data.items[0].count").value(2))
+                // 인증 없이 열린 응답이다. 누가 주문했는지와 점주 API 의 손잡이는 여기 실리면 안 된다
+                .andExpect(jsonPath("$.data.email").doesNotExist())
+                .andExpect(jsonPath("$.data.orderId").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("대기번호로 주문 조회 - 없는 번호는 404 이고 RsData 봉투로 나간다")
+    void should_없는_대기번호는_404다() throws Exception {
+        // PK 가 1 부터 채번되고 assignOrderNumber 가 id 0 을 막으므로 0000 은 어떤 주문에도 붙지 않는다
+        mvc.perform(get("/api/order/{orderNumber}", "0000"))
+                .andDo(print())
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.resultCode").value("404-1"));
     }
 
     @Test
@@ -324,11 +326,9 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @DisplayName("가격 스냅샷 - 메뉴 가격을 바꿔도 과거 주문 금액은 변하지 않는다")
     void 가격스냅샷_메뉴가격변경이_과거주문에_소급되지_않는다() {
         // given: setup()이 심은 주문: 아메리카노(3000) x2 + 카페라떼(4000) x1 = 10,000원
-        String email = "order@example.com";
-
-        OrderDto.OrderListResponse 주문직후 = orderService.getOrderList(email);
-        assertThat(주문직후.orders().get(0).totalPrice()).isEqualTo(10000);
-        assertThat(주문직후.orders().get(0).items())
+        OrderDto.OrderLookupResponse 주문직후 = orderService.getOrderByNumber(seededOrderNumber);
+        assertThat(주문직후.totalPrice()).isEqualTo(10000);
+        assertThat(주문직후.items())
                 .extracting(OrderDto.OrderItemDTO::orderPrice)
                 .containsExactly(3000, 4000);
 
@@ -339,9 +339,9 @@ public class OrderControllerTest extends AbstractIntegrationTest {
 
         // then: 이미 지나간 주문의 금액은 그대로여야 한다.
         // 스냅샷이 없다면 여기서 27,000원(9000x2 + 9000x1)이 나온다.
-        OrderDto.OrderListResponse 가격인상후 = orderService.getOrderList(email);
-        assertThat(가격인상후.orders().get(0).totalPrice()).isEqualTo(10000);
-        assertThat(가격인상후.orders().get(0).items())
+        OrderDto.OrderLookupResponse 가격인상후 = orderService.getOrderByNumber(seededOrderNumber);
+        assertThat(가격인상후.totalPrice()).isEqualTo(10000);
+        assertThat(가격인상후.items())
                 .extracting(OrderDto.OrderItemDTO::orderPrice)
                 .containsExactly(3000, 4000);
     }
@@ -350,10 +350,8 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @DisplayName("이름 스냅샷 - 메뉴 이름을 바꿔도 과거 주문의 품목명은 변하지 않는다")
     void 이름스냅샷_메뉴이름변경이_과거주문에_소급되지_않는다() {
         // given: setup()이 심은 주문의 품목은 아메리카노와 카페라떼다
-        String email = "order@example.com";
-
-        OrderDto.OrderListResponse 주문직후 = orderService.getOrderList(email);
-        assertThat(주문직후.orders().get(0).items())
+        OrderDto.OrderLookupResponse 주문직후 = orderService.getOrderByNumber(seededOrderNumber);
+        assertThat(주문직후.items())
                 .extracting(OrderDto.OrderItemDTO::menuName)
                 .containsExactly("아메리카노", "카페라떼");
 
@@ -364,8 +362,8 @@ public class OrderControllerTest extends AbstractIntegrationTest {
 
         // then: 이미 지나간 주문의 품목명은 그대로여야 한다.
         // 스냅샷이 없다면 여기서 아이스 아메리카노와 바닐라 라떼가 나온다.
-        OrderDto.OrderListResponse 이름변경후 = orderService.getOrderList(email);
-        assertThat(이름변경후.orders().get(0).items())
+        OrderDto.OrderLookupResponse 이름변경후 = orderService.getOrderByNumber(seededOrderNumber);
+        assertThat(이름변경후.items())
                 .extracting(OrderDto.OrderItemDTO::menuName)
                 .containsExactly("아메리카노", "카페라떼");
     }
@@ -373,17 +371,13 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("소프트 삭제 - 판매를 중단한 메뉴의 과거 주문도 온전히 조회된다")
     void 판매중단된_메뉴의_과거주문이_그대로_조회된다() {
-        // given
-        String email = "order@example.com";
-
         // when: 점주가 아메리카노 판매를 중단한다.
         // 하드 삭제였다면 order_item.menu_id 외래키에 걸려 이 자리에서 죽는다.
         menu1.discontinue();
         menuRepository.save(menu1);
 
         // then: 이름도 금액도 총액도 그대로다. 조회 경로가 menu 행을 읽지 않기 때문이다
-        OrderDto.OrderListResponse 판매중단후 = orderService.getOrderList(email);
-        OrderDto.OrderSummary 주문 = 판매중단후.orders().get(0);
+        OrderDto.OrderLookupResponse 주문 = orderService.getOrderByNumber(seededOrderNumber);
 
         assertThat(주문.totalPrice()).isEqualTo(10000);
         assertThat(주문.items())

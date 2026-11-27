@@ -23,18 +23,29 @@
    sold_out: boolean;
  };
 
-type OrderHistory = {
-  email: string;
-  orders: Array<{
-    orderNumber: string;
-    totalPrice: number;
-    items: Array<{
-      menuName: string;
-      // 주문 시점 가격 스냅샷. 현재 메뉴 가격이 아니다.
-      orderPrice: number;
-      count: number;
-    }>;
+type OrderStatus = "CONFIRMED" | "IN_PROGRESS" | "READY" | "COMPLETED" | "CANCELLED";
+
+// 손님이 대기번호로 조회한 주문 하나. 손님 이메일도 내부 주문 id 도 오지 않는다
+type OrderLookup = {
+  orderNumber: string;
+  status: OrderStatus;
+  orderTime: string;
+  totalPrice: number;
+  items: Array<{
+    menuName: string;
+    // 주문 시점 가격 스냅샷. 현재 메뉴 가격이 아니다.
+    orderPrice: number;
+    count: number;
   }>;
+};
+
+// 손님에게 보이는 상태 이름. docs/REQUIREMENTS.md 6절 화면 명세의 낱말을 그대로 쓴다
+const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  CONFIRMED: "접수됨",
+  IN_PROGRESS: "제조중",
+  READY: "준비완료",
+  COMPLETED: "픽업완료",
+  CANCELLED: "취소됨",
 };
 
 type CartMap = Record<string, number>;
@@ -71,8 +82,8 @@ export default function Home() {
     email: "",
   });
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [historyEmail, setHistoryEmail] = useState("");
-  const [orderHistory, setOrderHistory] = useState<OrderHistory | null>(null);
+  const [lookupOrderNumber, setLookupOrderNumber] = useState("");
+  const [lookedUpOrder, setLookedUpOrder] = useState<OrderLookup | null>(null);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -414,46 +425,48 @@ export default function Home() {
 
   const handleOpenHistoryModal = () => {
     setIsHistoryModalOpen(true);
-    setOrderHistory(null);
+    setLookedUpOrder(null);
   };
 
   const handleCloseHistoryModal = () => {
     setIsHistoryModalOpen(false);
-    setHistoryEmail("");
-    setOrderHistory(null);
+    setLookupOrderNumber("");
+    setLookedUpOrder(null);
     setIsHistoryLoading(false);
   };
 
-  const handleFetchOrderHistory = async () => {
-    if (!historyEmail || !isValidEmail(historyEmail)) {
-      alert("유효한 이메일 주소를 입력해주세요.");
+  const handleLookupOrder = async () => {
+    const orderNumber = lookupOrderNumber.trim();
+    // 0 을 채워 맞춰 주지 않는다. 번호 형식은 백엔드의 Order 가 정하고, 여기서 흉내 내면 규칙이 두 곳이 된다
+    if (!/^\d+$/.test(orderNumber)) {
+      alert("대기번호는 숫자로 입력해주세요.");
       return;
     }
 
     setIsHistoryLoading(true);
-    setOrderHistory(null);
+    setLookedUpOrder(null);
     try {
       const response = await fetch("/api/order/history", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email: historyEmail }),
+        body: JSON.stringify({ orderNumber }),
       });
 
       if (response.ok) {
-        const data: OrderHistory = await response.json();
-        setOrderHistory(data);
+        const body: { data: OrderLookup } = await response.json();
+        setLookedUpOrder(body.data);
       } else if (response.status === 404) {
         const error = await response.json().catch(() => ({}));
-        alert(error.message || "해당 이메일의 주문 내역이 없습니다.");
+        alert(error.message || "해당 대기번호의 주문이 없습니다.");
       } else {
         const error = await response.json().catch(() => ({}));
-        alert(error.message || "주문 내역 조회에 실패했습니다.");
+        alert(error.message || "주문 조회에 실패했습니다.");
       }
     } catch (err) {
       console.error(err);
-      alert("주문 내역 조회 중 오류가 발생했습니다.");
+      alert("주문 조회 중 오류가 발생했습니다.");
     } finally {
       setIsHistoryLoading(false);
     }
@@ -683,7 +696,7 @@ export default function Home() {
                 onClick={handleOpenHistoryModal}
                 className="mt-2 w-full rounded-md border border-slate-300 bg-white py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
             >
-              주문 내역 조회
+              주문 조회
             </button>
 
           </section>
@@ -833,7 +846,7 @@ export default function Home() {
             </div>
         )}
 
-        {/* 주문 내역 조회 모달 */}
+        {/* 주문 조회 모달 */}
         {isHistoryModalOpen && (
             <div
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
@@ -845,7 +858,7 @@ export default function Home() {
               >
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="text-xl font-semibold text-slate-800">
-                    주문 내역 조회
+                    주문 조회
                   </h3>
                   <button
                       onClick={handleCloseHistoryModal}
@@ -872,80 +885,66 @@ export default function Home() {
                   <div>
                     <label className="block space-y-1">
                   <span className="text-sm font-medium text-slate-700">
-                    이메일
+                    대기번호
                   </span>
                       <input
-                          type="email"
-                          value={historyEmail}
-                          onChange={(e) => setHistoryEmail(e.target.value)}
+                          type="text"
+                          inputMode="numeric"
+                          value={lookupOrderNumber}
+                          onChange={(e) => setLookupOrderNumber(e.target.value)}
                           className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-slate-800 outline-none ring-emerald-500/60 transition focus:ring"
-                          placeholder="주문 시 사용한 이메일을 입력하세요"
+                          placeholder="주문 후 받은 대기번호를 입력하세요. 예: 0007"
                           disabled={isHistoryLoading}
                       />
                     </label>
                     <button
                         type="button"
-                        onClick={handleFetchOrderHistory}
+                        onClick={handleLookupOrder}
                         disabled={isHistoryLoading}
                         className="mt-3 w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {isHistoryLoading ? "조회 중..." : "주문 내역 조회"}
+                      {isHistoryLoading ? "조회 중..." : "주문 조회"}
                     </button>
                   </div>
 
-                  {orderHistory && (
-                      <div className="mt-4 space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
-                        <div className="mb-2 flex items-center justify-between">
-                          <div>
-                            <div className="font-semibold text-slate-800">
-                              {orderHistory.email}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              총 {orderHistory.orders.length}건의 주문
-                            </div>
+                  {lookedUpOrder && (
+                      <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                        <div className="rounded-md border border-slate-200 bg-white">
+                          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2 text-xs text-slate-600">
+                            <span className="font-semibold text-slate-800">
+                              대기번호 {lookedUpOrder.orderNumber}
+                            </span>
+                            <span className="font-semibold text-emerald-700">
+                              {ORDER_STATUS_LABEL[lookedUpOrder.status]}
+                            </span>
+                            <span>{formatPrice(lookedUpOrder.totalPrice)}</span>
                           </div>
-                        </div>
-
-                        <div className="max-h-64 space-y-3 overflow-y-auto">
-                          {orderHistory.orders.map((order, orderIdx) => (
-                              <div
-                                  key={orderIdx}
-                                  className="rounded-md border border-slate-200 bg-white"
-                              >
-                                <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2 text-xs text-slate-600">
-                          <span className="font-semibold text-slate-800">
-                            대기번호 {order.orderNumber}
-                          </span>
-                                  <span>{formatPrice(order.totalPrice)}</span>
-                                </div>
-                                <table className="w-full text-left text-xs">
-                                  <thead className="bg-slate-100 text-slate-600">
-                                  <tr>
-                                    <th className="px-3 py-2">메뉴명</th>
-                                    <th className="w-20 px-3 py-2 text-right">
-                                      가격
-                                    </th>
-                                    <th className="w-16 px-3 py-2 text-center">
-                                      수량
-                                    </th>
-                                  </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-100">
-                                  {(order.items ?? []).map((item, idx) => (
-                                      <tr key={idx}>
-                                        <td className="px-3 py-2">{item.menuName}</td>
-                                        <td className="px-3 py-2 text-right">
-                                          {formatPrice(item.orderPrice)}
-                                        </td>
-                                        <td className="px-3 py-2 text-center">
-                                          x{item.count}
-                                        </td>
-                                      </tr>
-                                  ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                          ))}
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-100 text-slate-600">
+                            <tr>
+                              <th className="px-3 py-2">메뉴명</th>
+                              <th className="w-20 px-3 py-2 text-right">
+                                가격
+                              </th>
+                              <th className="w-16 px-3 py-2 text-center">
+                                수량
+                              </th>
+                            </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                            {lookedUpOrder.items.map((item, idx) => (
+                                <tr key={idx}>
+                                  <td className="px-3 py-2">{item.menuName}</td>
+                                  <td className="px-3 py-2 text-right">
+                                    {formatPrice(item.orderPrice)}
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    x{item.count}
+                                  </td>
+                                </tr>
+                            ))}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                   )}
