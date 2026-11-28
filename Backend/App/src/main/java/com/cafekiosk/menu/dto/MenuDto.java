@@ -86,4 +86,12 @@ public class MenuDto {
             );
         }
     }
+
+    // 새 메뉴는 재고 0 인 품절로 태어나 팔려면 재고 조정이 따로 필요하다. 등록한 화면이 그 조정을
+    // 곧바로 부를 수 있게 id 를 돌려준다. 초기 재고를 0 으로 둔 판단은 docs/ADR/ADR-0004 에 있다.
+    // 키 이름은 목록과 수정 응답에 맞춰 menu_id 다
+    public record MenuCreateResponse(
+            @JsonProperty("menu_id")
+            long menuId
+    ) {}
 }

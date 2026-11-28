@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +26,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.handler;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -90,7 +90,7 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
     @DisplayName("메뉴 생성 - 201 이고 행이 실제로 남는다")
     void 메뉴생성이_DB에_반영된다() throws Exception {
         // BFF 가 보내는 필드명 그대로다. frontend/src/app/api/menu/route.ts 의 POST 핸들러 참고
-        mvc.perform(
+        ResultActions resultActions = mvc.perform(
                         post("/api/menu")
                                 .with(점주_토큰(accessTokenIssuer))
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -107,9 +107,10 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
                 .andExpect(handler().handlerType(MenuController.class))
                 .andExpect(handler().methodName("createMenu"))
                 .andExpect(status().isCreated())
-                .andExpect(content().string("생성 완료되었습니다."));
+                .andExpect(jsonPath("$.resultCode").value("201-1"))
+                .andExpect(jsonPath("$.message").value("생성 완료되었습니다."));
 
-        // 응답 문자열은 트랜잭션이 커밋됐는지 알려주지 않는다. 행을 직접 찾는다.
+        // 응답은 트랜잭션이 커밋됐는지 알려주지 않는다. 행을 직접 찾는다.
         List<Menu> 저장된메뉴 = menuRepository.findAll().stream()
                 .filter(menu -> menu.getMenuName().equals("트랜잭션 경계 확인용 케이크"))
                 .toList();
@@ -117,6 +118,10 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
         assertThat(저장된메뉴).hasSize(1);
         assertThat(저장된메뉴.get(0).getMenuPrice()).isEqualTo(6500);
         만든메뉴.add(저장된메뉴.get(0).getId());
+
+        // 응답이 돌려준 id 는 방금 커밋된 그 행을 가리켜야 한다. 등록한 화면은 이 값으로 곧바로
+        // 재고를 조정하므로, 다른 행을 가리키면 엉뚱한 메뉴의 재고가 바뀐다
+        resultActions.andExpect(jsonPath("$.data.menu_id").value(저장된메뉴.get(0).getId()));
     }
 
     @Test

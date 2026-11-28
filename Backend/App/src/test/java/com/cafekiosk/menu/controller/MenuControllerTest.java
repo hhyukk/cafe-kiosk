@@ -272,7 +272,7 @@ public class MenuControllerTest extends AbstractIntegrationTest {
         assertThat(메뉴아이디).isNotEmpty().isSorted();
     }
 
-    // t07 부터 t09 는 메뉴 수정이 가격 규칙을 지키는지 본다. 가격은 0원 이상 10,000,000원 이하다. FR-MNU-03.
+    // t07 부터 t09 는 메뉴 수정이, t10 은 메뉴 등록이 가격 규칙을 지키는지 본다. 가격은 0원 이상 10,000,000원 이하다. FR-MNU-03.
     // 규칙의 경계값 자체는 MenuTest 가 POJO 로 보고, 여기서는 그 판정이 HTTP 응답으로 어떻게 나가는지를 본다.
 
     @Test
@@ -348,6 +348,34 @@ public class MenuControllerTest extends AbstractIntegrationTest {
                 .andDo(print());
 
         resultActions
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.resultCode").value("400-1"));
+    }
+
+    @Test
+    @DisplayName("메뉴 등록, 가격이 10,000,000원을 넘으면 400-1")
+    void t10() throws Exception {
+        // 등록 컨트롤러가 같은 범위를 앞단에서 먼저 보고 평문으로 400 을 내던 때가 있었다.
+        // 그 검사를 걷어낸 뒤로는 수정과 같은 Menu 의 판정을 지나 봉투로 나간다
+        ResultActions resultActions = mvc
+                .perform(
+                        post("/api/menu")
+                                .with(점주_토큰(accessTokenIssuer))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "category": "블렌디드",
+                                            "menuName": "너무 비싼 망패블",
+                                            "price": 10000001,
+                                            "imageURL": "tmpImgURL"
+                                        }
+                                        """)
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(handler().handlerType(MenuController.class))
+                .andExpect(handler().methodName("createMenu"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.resultCode").value("400-1"));
     }
