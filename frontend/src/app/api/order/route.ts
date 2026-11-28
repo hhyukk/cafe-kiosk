@@ -74,16 +74,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 백엔드 응답을 해석하지 않고 그대로 넘기므로 모양을 정하지 않는다
-    let responseJson: unknown = {};
-    try {
-      responseJson = await backendResponse.json();
-    } catch {
-      // 빈 바디일 수 있음
-    }
-
-    // 성공 응답 (200 OK)
-    return NextResponse.json(responseJson, { status: 200 });
+    // 백엔드는 RsData 봉투로 준다. 주문 조회 라우트처럼 message 와 data 만 골라 넘긴다
+    const responseBody = await backendResponse.json();
+    return NextResponse.json(
+      { message: responseBody.message, data: responseBody.data },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("결제 처리 오류:", error);
     return NextResponse.json(

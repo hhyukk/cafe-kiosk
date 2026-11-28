@@ -43,12 +43,11 @@ export async function DELETE(
       );
     }
 
+    // 백엔드는 RsData 봉투로 준다. 화면은 message 만 읽으므로 그것만 넘긴다
     let message = "메뉴가 삭제되었습니다.";
     try {
-      const text = await backendResponse.text();
-      if (text) {
-        message = text;
-      }
+      const responseBody = await backendResponse.json();
+      message = responseBody.message || message;
     } catch {
       // ignore
     }

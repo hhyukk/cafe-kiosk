@@ -104,7 +104,7 @@ export default function Home() {
         throw new Error(`서버 응답 오류: ${res.status}`);
       }
 
-      const apiData: MenuItem[] = await res.json();
+      const { data: apiData }: { data: MenuItem[] } = await res.json();
       console.log("백엔드에서 받은 데이터:", apiData);
 
       const convertedProducts: Product[] = apiData.map((item) => ({
@@ -228,7 +228,7 @@ export default function Home() {
 
       if (response.ok) {
         // 손님은 대기번호를 받아간다. 전용 주문 완료 화면은 Phase 3 의 화면 3분할에서 만든다.
-        const data = await response.json();
+        const { data }: { data: { orderNumber: string } } = await response.json();
         alert(`주문이 완료되었습니다.\n대기번호 ${data.orderNumber}번`);
         setCart({});
         setOrderForm({ email: "" });
@@ -341,7 +341,7 @@ export default function Home() {
         throw new Error(error.message || '이미지 업로드 실패');
       }
 
-      const data = await response.json();
+      const { data }: { data: { imageUrl: string } } = await response.json();
       return data.imageUrl;
     } catch (err) {
       console.error('이미지 업로드 오류:', err);
@@ -1038,7 +1038,7 @@ export default function Home() {
                               throw new Error(error.message || '이미지 업로드 실패');
                             }
 
-                            const uploadData = await uploadResponse.json();
+                            const { data: uploadData }: { data: { imageUrl: string } } = await uploadResponse.json();
                             imageUrl = uploadData.imageUrl;
                           } finally {
                             setUploadingImage(false);
