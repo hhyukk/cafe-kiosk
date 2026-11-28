@@ -26,6 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 코드의 하드코딩을 전부 걷어내도 이미 저장된 행은 남는다.
  * 그래서 "호스트를 포함하지 않는다"를 테스트로 못박는다.
  *
+ * 검증 실패 둘이 400-1 봉투로 나가는지도 함께 본다. 크기 초과는 보지 않는다. 이유는 클래스 끝 주석에 있다.
+ *
  * upload-dir 을 build/ 아래로 돌린 이유:
  * 기본값이 ./uploads 라 테스트가 실제 업로드 폴더에 파일을 흘린다.
  * build/ 는 gitignore 대상이고 clean 으로 지워진다.
@@ -52,10 +54,47 @@ public class FileUploadControllerTest extends AbstractIntegrationTest {
 
         mvc.perform(multipart("/api/upload/image").file(file).with(점주_토큰(accessTokenIssuer)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.imageUrl").value(startsWith("/uploads/")))
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
+                .andExpect(jsonPath("$.data.imageUrl").value(startsWith("/uploads/")))
                 // UUID + 확장자. http:// 나 localhost 가 섞여 들어오면 여기서 걸린다.
-                .andExpect(jsonPath("$.imageUrl").value(
+                .andExpect(jsonPath("$.data.imageUrl").value(
                         matchesPattern("/uploads/[0-9a-f-]{36}\\.png")))
-                .andExpect(jsonPath("$.originalFilename").value("예가체프.png"));
+                .andExpect(jsonPath("$.data.originalFilename").value("예가체프.png"));
     }
+
+    @Test
+    @DisplayName("빈 파일을 올리면 400 이고 RsData 봉투로 나간다")
+    void should_빈_파일은_400이다() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "빈파일.png",
+                MediaType.IMAGE_PNG_VALUE,
+                new byte[0]
+        );
+
+        mvc.perform(multipart("/api/upload/image").file(file).with(점주_토큰(accessTokenIssuer)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.resultCode").value("400-1"))
+                .andExpect(jsonPath("$.message").value("파일이 비어있습니다"));
+    }
+
+    @Test
+    @DisplayName("이미지가 아닌 파일을 올리면 400 이고 RsData 봉투로 나간다")
+    void should_이미지가_아닌_파일은_400이다() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "메뉴판.txt",
+                MediaType.TEXT_PLAIN_VALUE,
+                "이미지가 아닌 바이트".getBytes()
+        );
+
+        mvc.perform(multipart("/api/upload/image").file(file).with(점주_토큰(accessTokenIssuer)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.resultCode").value("400-1"))
+                .andExpect(jsonPath("$.message").value("이미지 파일만 업로드 가능합니다"));
+    }
+
+    // 5MB 를 넘는 파일은 여기서 보지 않는다. MockMvc 는 multipart 한도를 적용하지 않아 요청이
+    // 컨트롤러의 크기 검사까지 닿지만, 실제 서버에서는 그 전에 MaxUploadSizeExceededException 이 된다.
+    // 여기서 400 을 보이면 실제 서버와 다른 사실을 증명하게 된다. 그 경로는 CLAUDE.md 함정표가 들고 있다.
 }
