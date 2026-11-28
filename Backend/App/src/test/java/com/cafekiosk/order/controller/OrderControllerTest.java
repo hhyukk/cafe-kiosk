@@ -598,6 +598,8 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                         .content("{\"status\": \"IN_PROGRESS\"}"))
                 .andDo(print())
                 .andExpect(status().isOk())
+                // message 만 보면 봉투 없는 응답에도 같은 자리에 같은 값이 있어 통과한다. resultCode 는 봉투에만 있다
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
                 .andExpect(jsonPath("$.message").value("주문 상태가 변경되었습니다."));
 
         assertThat(orderRepository.findById(orderId).orElseThrow().getStatus())

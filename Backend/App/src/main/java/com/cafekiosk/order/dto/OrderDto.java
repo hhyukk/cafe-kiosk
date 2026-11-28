@@ -19,8 +19,6 @@ public class OrderDto {
     ) {
     }
 
-    public record ChangeStatusResponse(String message) {}
-
     // items 에 @Valid 를 붙여야 각 OrderItemRequest 의 제약까지 검증이 전파된다.
     // @NotNull 만 두면 리스트가 비어 있지 않은지만 보고 요소 안은 들여다보지 않는다.
     public record CreateRequest(

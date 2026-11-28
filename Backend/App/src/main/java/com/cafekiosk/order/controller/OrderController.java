@@ -12,7 +12,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -125,14 +124,15 @@ public class OrderController {
     })
 
     @PatchMapping("/api/order/{orderId}/status")
-    public ResponseEntity<OrderDto.ChangeStatusResponse> changeStatus(
+    public RsData<Void> changeStatus(
             @PathVariable Long orderId,
             @Valid @RequestBody OrderDto.ChangeStatusRequest request) {
 
         orderFacade.changeStatus(orderId, request.status());
 
-        return ResponseEntity.ok(
-                new OrderDto.ChangeStatusResponse("주문 상태가 변경되었습니다.")
+        return new RsData<>(
+                "200-1",
+                "주문 상태가 변경되었습니다."
         );
     }
 }
