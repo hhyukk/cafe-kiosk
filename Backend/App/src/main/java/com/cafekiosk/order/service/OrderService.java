@@ -90,7 +90,6 @@ public class OrderService {
         }
 
         return new OrderDto.CreateResponse(
-                "주문이 성공적으로 등록되었습니다.",
                 order.getOrderNumber(),
                 order.getTotalPrice()
         );

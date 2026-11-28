@@ -39,15 +39,12 @@ public class OrderDto {
     }
 
     // orderNumber = 손님이 받아가는 대기번호
+    // 메시지는 컨트롤러가 봉투에 싣는다. 여기에도 두면 같은 말을 봉투의 message 와 두 군데서 하게 된다.
+    // 거절된 주문을 이 타입으로 나타내지도 않는다. 거절은 예외가 되어 GlobalExceptionHandler 의 봉투로 나간다
     public record CreateResponse(
-            String message,
             String orderNumber,
             int totalPrice
     ) {
-        /** 주문이 성립하지 않은 경우. 대기번호도 금액도 없다. */
-        public static CreateResponse rejected(String message) {
-            return new CreateResponse(message, null, 0);
-        }
     }
 
     // orderPrice = 주문 시점 가격 스냅샷. 현재 메뉴 가격이 아니다.
