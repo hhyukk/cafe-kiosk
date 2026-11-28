@@ -13,10 +13,11 @@ import java.time.LocalDateTime;
 @Getter
 @NoArgsConstructor
 public class Menu extends BaseEntity {
-    // 메뉴 가격의 범위다. FR-MNU-03. 판정은 아래 requireValidPrice 하나가 하고, 등록 컨트롤러처럼
-    // 범위를 앞단에서 다시 보는 자리는 숫자를 직접 적지 않고 이 상수를 가져다 쓴다
-    public static final int MIN_PRICE = 0;
-    public static final int MAX_PRICE = 10_000_000;
+    // 메뉴 가격의 범위다. FR-MNU-03. 판정은 아래 requireValidPrice 하나가 한다.
+    // 공개하지 않는 것은 범위를 밖에서 다시 보는 자리를 만들지 않으려는 것이다. 한때 등록 컨트롤러가
+    // 이 상수로 같은 범위를 앞단에서 먼저 봤는데, 응답을 RsData 로 통일하면서 그 검사를 걷어냈다
+    private static final int MIN_PRICE = 0;
+    private static final int MAX_PRICE = 10_000_000;
 
     @NotNull
     String menuName;

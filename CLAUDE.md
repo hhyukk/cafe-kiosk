@@ -61,7 +61,7 @@ API 문서는 http://localhost:8080/swagger-ui.html 이다. 점주 API는 `POST 
 - **낙관적 락 재시도는 `OrderFacade`가 소유하고, 거기에 `@Transactional`을 붙이지 않는다.** 버전 충돌은 트랜잭션이 롤백돼야 드러나므로 재시도는 죽은 트랜잭션 밖 새 트랜잭션에서 일어나야 한다. NFR-CON-05. 붙이는 순간 재시도가 무의미해지고, 그 사실이 예외가 아니라 조용한 실패로 나타난다. 컨트롤러에도 붙이지 않는 이유가 같다. 재고에 닿는 경로를 새로 만들면 서비스가 아니라 파사드를 거치게 한다.
 - **손님 행은 주문 트랜잭션과 따로 커밋된다.** `OrderService.findOrCreateCustomer`가 바깥에서 먼저 찾고, 없을 때만 `CustomerService.create`를 `REQUIRES_NEW`로 부른 뒤, 성공이든 유니크 충돌이든 다시 읽는다. 주문 트랜잭션 안에서 `customerRepository.save`를 부르지 않는다. 같은 이메일 첫 주문 둘이 겹치면 PostgreSQL이 위반 난 트랜잭션을 abort 시켜 주문째 죽는다. NFR-CON-06. 대가로 주문이 거절돼도 손님 행은 남는다.
 - **비밀번호 해시는 `Owner` 생성자가 만든다.** 평문과 `PasswordEncoder`를 받아 그 자리에서 해시하고, 해시를 받는 생성자는 두지 않는다. 가격 스냅샷과 같은 이유로 평문이 들어갈 경로 자체를 없앤다.
-- **메뉴 가격 범위는 `Menu`가 소유한다.** 생성자와 `modify`가 대입보다 먼저 `requireValidPrice`로 판정하고 `IllegalArgumentException`을 던진다. 범위를 DTO 어노테이션으로 다시 적지 않는다. 한때 등록은 컨트롤러가, 수정은 DTO의 `@Positive`가 따로 보다가 수정만 0원을 거절하고 상한을 넘겼다. 등록 컨트롤러의 앞단 검사는 평문 응답을 지키려고 남긴 것이고 `Menu`의 상수를 쓴다. 필드에 `@Min`과 `@Max`를 달지 않는다. 그 검사는 부르는 순간이 아니라 Hibernate가 엔티티를 쓸 때 돌고, 거기서 나는 예외는 `GlobalExceptionHandler`에 매핑이 없다.
+- **메뉴 가격 범위는 `Menu`가 소유한다.** 생성자와 `modify`가 대입보다 먼저 `requireValidPrice`로 판정하고 `IllegalArgumentException`을 던진다. 범위를 DTO 어노테이션으로 다시 적지 않는다. 한때 등록은 컨트롤러가, 수정은 DTO의 `@Positive`가 따로 보다가 수정만 0원을 거절하고 상한을 넘겼다. 필드에 `@Min`과 `@Max`를 달지 않는다. 그 검사는 부르는 순간이 아니라 Hibernate가 엔티티를 쓸 때 돌고, 거기서 나는 예외는 `GlobalExceptionHandler`에 매핑이 없다.
 - **경로별 권한은 `global/security/SecurityConfig` 한곳이 정하고, 잠긴 것이 기본이다.** 손님에게 여는 경로만 공개 목록에 적고 나머지는 전부 ROLE_OWNER다. 손님 엔드포인트를 새로 만들면 공개 목록에 메서드까지 맞춰 더한다. 잊으면 401이 나며 곧바로 드러난다. 컨트롤러와 서비스는 호출자가 누구인지 따지지 않는다.
 - **신원이 필요한 자리에서는 컨트롤러가 `Authentication`으로 받아 값으로 넘긴다.** 메뉴 등록자가 그렇다. 토큰의 sub가 이메일이라 `getName()`이 곧 등록자다. 기록하려고 읽는 것이지 권한을 따지는 것이 아니다. 서비스는 `SecurityContextHolder`를 읽지 않고, 요청 본문의 이메일로 등록자를 적거나 권한을 판단하지 않는다.
 
@@ -99,7 +99,7 @@ com.cafekiosk
 - **MockMvc를 `MockMvcBuilders`로 손으로 만들지 않는다.** 보안 필터가 빠져 점주 API가 토큰 없이 200을 낸다. `@AutoConfigureMockMvc`가 만든 것을 주입받는다.
 - JWT 서명 키는 `AbstractIntegrationTest`가 JVM마다 난수로 넣는다. `application-test.yml`에 키를 적지 않는다. 그 파일은 `src/main/resources`에 있어 jar에 실린다.
 
-회귀 방지선이 여섯 있다. `OrderControllerTest`의 가격 스냅샷 테스트는 조회 경로가 `orderItem.getOrderPrice` 대신 `getMenu().getMenuPrice`를 읽는 순간 잡아내고, 대기번호 조회 테스트는 손님에게 열린 응답에 이메일이나 orderId가 실리는 순간 잡아낸다. `FileUploadControllerTest`는 업로드 응답 URL에 호스트가 붙는 순간 잡아낸다. `MenuWriteTransactionTest`는 메뉴 생성과 수정과 삭제가 readOnly 트랜잭션에 갇혀 SQL이 조용히 사라지는 순간, 메뉴 등록이 재고 행을 함께 만들지 않게 되는 순간, 그리고 등록자가 토큰의 이메일로 기록되지 않거나 삭제에 등록자 비교가 되살아나는 순간 잡아낸다. `OrderStockTest`는 재고 부족 주문이 부분 차감을 남기는 순간 잡아낸다. `StockControllerTest`는 재고 조정이 준영속 엔티티 위에서 사라져 200만 나가는 순간 잡아낸다. `SecurityConfigTest`는 점주 API가 토큰 없이 열리거나 손님 경로가 잠기거나 401이 RsData 봉투를 잃는 순간 잡아낸다.
+회귀 방지선이 일곱 있다. `OrderControllerTest`의 가격 스냅샷 테스트는 조회 경로가 `orderItem.getOrderPrice` 대신 `getMenu().getMenuPrice`를 읽는 순간 잡아내고, 대기번호 조회 테스트는 손님에게 열린 응답에 이메일이나 orderId가 실리는 순간 잡아낸다. `FileUploadControllerTest`는 업로드 응답 URL에 호스트가 붙는 순간 잡아낸다. `MenuWriteTransactionTest`는 메뉴 생성과 수정과 삭제가 readOnly 트랜잭션에 갇혀 SQL이 조용히 사라지는 순간, 메뉴 등록이 재고 행을 함께 만들지 않게 되는 순간, 그리고 등록자가 토큰의 이메일로 기록되지 않거나 삭제에 등록자 비교가 되살아나는 순간 잡아낸다. `OrderStockTest`는 재고 부족 주문이 부분 차감을 남기는 순간 잡아낸다. `StockControllerTest`는 재고 조정이 준영속 엔티티 위에서 사라져 200만 나가는 순간 잡아낸다. `SecurityConfigTest`는 점주 API가 토큰 없이 열리거나 손님 경로가 잠기거나 401이 RsData 봉투를 잃는 순간 잡아낸다. `RsDataEnvelopeTest`는 컨트롤러 메서드나 예외 핸들러가 RsData나 `ResponseEntity<RsData>` 말고 다른 것을 돌려주는 순간 잡아낸다. 반환형을 제네릭까지 풀어 보므로 `ResponseEntity<String>`도 걸린다. 핸들러 메서드를 거치지 않고 /error로 나가는 응답은 보지 못하고, 보안 필터의 401은 `SecurityConfigTest`가 봉투까지 본다.
 
 **검증 대상이 트랜잭션 경계이면 테스트에 `@Transactional`을 붙이지 않는다.** 붙이는 순간 테스트가 read-write 트랜잭션을 먼저 열어, 서비스의 `readOnly = true`가 거기 참여만 하고 속성이 무시된다. 잡으려던 결함이 통째로 가려진다. `MenuWriteTransactionTest`가 `@Transactional` 없이 서서 만든 행을 `@AfterEach`로 직접 지우는 이유가 이것이다.
 
@@ -135,7 +135,7 @@ Next 16이라 라우트 핸들러의 `params`는 `Promise`다. `context: { param
 | --- | --- |
 | dev 프로필은 재기동마다 스키마를 드롭하고 시드를 다시 심는다. `ddl-auto: create` | `application.yml` |
 | BFF가 토큰을 다루지 않아 화면의 메뉴 등록, 수정, 삭제, 이미지 업로드가 401을 받는다. 그동안 메뉴 관리는 Swagger로 한다 | `frontend/src/app/api/menu/`, `page.tsx` |
-| 응답 봉투가 섞여 있다. 맨 배열, 평문 문자열, Map, 봉투 없는 DTO. 새 코드는 `RsData`로 통일한다 | `MenuController`, `FileUploadController` |
+| 업로드 크기를 컨트롤러에서만 본다. 5MB를 넘는 파일은 컨트롤러에 닿기 전에 multipart 한도에 걸려 매핑 없는 `MaxUploadSizeExceededException`이 되고 413과 Boot 기본 오류 본문으로 나간다. 남은 본문이 `server.tomcat.max-swallow-size` 기본값 2MB를 넘으면 연결이 끊겨 그 응답조차 받지 못할 수 있다. MockMvc는 multipart 한도를 적용하지 않아 테스트로는 보이지 않는다 | `application.yml`, `FileUploadController` |
 | CORS 허용 메서드에 PATCH가 없다. 브라우저가 상태 변경을 직접 부르면 막힌다 | `global/config/WebConfig.java` |
 | `page.tsx`가 1239줄 단일 클라이언트 컴포넌트다. 국소 수정만 하고 전체를 다시 쓰지 않는다 | `frontend/src/app/page.tsx` |
 | 이미지 업로드 두 곳이 BFF를 건너뛰고 8080을 직접 부른다 | `page.tsx:334`, `page.tsx:1031` |

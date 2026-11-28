@@ -19,10 +19,9 @@ public class OrderDto {
     ) {
     }
 
-    public record ChangeStatusResponse(String message) {}
-
     // items 에 @Valid 를 붙여야 각 OrderItemRequest 의 제약까지 검증이 전파된다.
-    // @NotNull 만 두면 리스트가 비어 있지 않은지만 보고 요소 안은 들여다보지 않는다.
+    // @NotNull 만 두면 리스트가 null 인지만 보고 요소 안은 들여다보지 않는다.
+    // 빈 리스트는 @NotNull 도 @Valid 도 통과하고, 그 요청은 컨트롤러의 총 수량 검사가 400 으로 막는다.
     public record CreateRequest(
             @NotBlank @Email String email,
             @NotNull @Valid List<OrderItemRequest> items
@@ -39,15 +38,12 @@ public class OrderDto {
     }
 
     // orderNumber = 손님이 받아가는 대기번호
+    // 메시지는 컨트롤러가 봉투에 싣는다. 여기에도 두면 같은 말을 봉투의 message 와 두 군데서 하게 된다.
+    // 거절된 주문을 이 타입으로 나타내지도 않는다. 거절은 예외가 되어 GlobalExceptionHandler 의 봉투로 나간다
     public record CreateResponse(
-            String message,
             String orderNumber,
             int totalPrice
     ) {
-        /** 주문이 성립하지 않은 경우. 대기번호도 금액도 없다. */
-        public static CreateResponse rejected(String message) {
-            return new CreateResponse(message, null, 0);
-        }
     }
 
     // orderPrice = 주문 시점 가격 스냅샷. 현재 메뉴 가격이 아니다.

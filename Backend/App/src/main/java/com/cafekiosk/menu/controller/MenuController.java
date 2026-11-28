@@ -2,7 +2,6 @@ package com.cafekiosk.menu.controller;
 
 import com.cafekiosk.menu.dto.CreateMenuRequestDto;
 import com.cafekiosk.menu.dto.MenuDto;
-import com.cafekiosk.menu.entity.Menu;
 import com.cafekiosk.menu.service.MenuService;
 import com.cafekiosk.global.rsData.RsData;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,10 +35,14 @@ public class MenuController {
             @ApiResponse(responseCode = "200-1", description = "조회 성공")
     })
     @GetMapping
-    public List<MenuListResponse> getMenus() {
+    public RsData<List<MenuListResponse>> getMenus() {
         // 재고를 맞추는 일은 서비스 트랜잭션 안에서 끝난다. 여기서 조립하면
         // 영속성 컨텍스트 밖이라 재고를 붙일 때마다 메뉴를 다시 읽을 여지가 생긴다.
-        return menuService.findAllWithStock();
+        return new RsData<>(
+                "200-1",
+                "메뉴 목록 조회 성공",
+                menuService.findAllWithStock()
+        );
     }
 
     @Operation(summary = "메뉴 정보 수정", description = "특정 메뉴의 이름, 가격, 이미지 URL, 카테고리 정보를 업데이트합니다.")
@@ -78,18 +81,10 @@ public class MenuController {
 
 
     @PostMapping //추가기능
-    public ResponseEntity<String> createMenu(
+    public ResponseEntity<RsData<MenuCreateResponse>> createMenu(
             @Valid @RequestBody CreateMenuRequestDto req,
             Authentication authentication
     ) {
-        // 가격 규칙의 주인은 Menu 다. 이 검사는 실패 응답을 지금의 평문으로 지키려고 남겨 둔 앞단이고,
-        // 응답을 RsData 로 통일할 때 걷어낸다. 범위를 다시 적지 않도록 Menu 의 상수를 쓴다
-        if (req.getPrice() < Menu.MIN_PRICE || req.getPrice() > Menu.MAX_PRICE) {
-            return ResponseEntity
-                    .badRequest()
-                    .body("메뉴 가격은 0원 이상 10,000,000원 이하만 가능합니다.");
-        }
-
         // 등록자는 보안 필터가 검증한 토큰에서 꺼낸다. 토큰의 sub 가 이메일이라 getName() 이
         // 곧 등록자 이메일이다. 그렇게 정한 이유는 AccessTokenIssuer 주석에 있다.
         // 여기서 신원을 읽는 것은 기록하려는 것이지 권한을 판단하려는 것이 아니다. 누가 이 API 를
@@ -97,17 +92,30 @@ public class MenuController {
         //
         // 서비스에는 문자열로 넘긴다. 서비스가 보안 컨텍스트를 직접 읽으면 그 메서드가 기대는
         // 입력 하나가 시그니처에서 사라진다.
-        menuService.createMenu(req, authentication.getName());
-        return ResponseEntity.status(HttpStatus.CREATED).body("생성 완료되었습니다.");
+        //
+        // 가격 범위는 여기서 다시 보지 않는다. 판정은 Menu 하나가 하고, 벗어나면 엔티티가 던진 예외를
+        // GlobalExceptionHandler 가 400-1 로 옮긴다. 수정과 같은 판정을 지나므로 두 경로가 갈리지 않는다.
+        MenuCreateResponse created = menuService.createMenu(req, authentication.getName());
+
+        RsData<MenuCreateResponse> rs = new RsData<>(
+                "201-1",
+                "생성 완료되었습니다.",
+                created
+        );
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(rs);
     }
 
     @DeleteMapping("/delete/{menu_id}")
-    public ResponseEntity<String> deleteMenu(
+    public RsData<Void> deleteMenu(
             @PathVariable Long menu_id
     ) {
         // 실패 갈래가 여기 없다. 없거나 이미 판매 중단된 메뉴면 서비스가 예외를 던지고
         // GlobalExceptionHandler 가 404 로 옮긴다. 이유는 MenuService.deleteMenu 주석에 있다.
         menuService.deleteMenu(menu_id);
-        return ResponseEntity.status(HttpStatus.OK).body("삭제되었습니다.");
+        return new RsData<>(
+                "200-1",
+                "삭제되었습니다."
+        );
     }
 }

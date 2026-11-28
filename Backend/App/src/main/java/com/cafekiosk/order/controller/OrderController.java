@@ -7,14 +7,11 @@ import com.cafekiosk.order.facade.OrderFacade;
 import com.cafekiosk.order.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,8 +38,7 @@ public class OrderController {
             description = "사용자 이메일과 선택한 메뉴 목록을 받아 새로운 주문을 생성하고, 손님이 받아갈 대기번호를 반환합니다."
     )
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200-1", description = "주문 완료 (대기번호 + 주문 금액 반환)",
-                    content = @Content(schema = @Schema(implementation = OrderDto.CreateResponse.class))),
+            @ApiResponse(responseCode = "200-1", description = "주문 완료 (대기번호 + 주문 금액 반환)"),
             @ApiResponse(responseCode = "400-1", description = "요청 데이터 유효성 검사 실패")
     })
     // 컨트롤러에 @Transactional 을 붙이지 않는다. 낙관적 락 재시도는 롤백된 트랜잭션 밖
@@ -52,7 +48,7 @@ public class OrderController {
     // 그 재시도를 실제로 도는 자리가 OrderFacade 다. 이 주석이 비워 두라고 적어 둔
     // 바깥 자리가 이제 채워졌다.
     @PostMapping("/api/order")
-    public ResponseEntity<OrderDto.CreateResponse> createOrder(
+    public RsData<OrderDto.CreateResponse> createOrder(
             @Valid @RequestBody OrderDto.CreateRequest request) {
 
         // 주문 최대 수량 100개 제한 (전체 수량 기준)
@@ -61,13 +57,17 @@ public class OrderController {
                 .mapToInt(OrderDto.OrderItemRequest::count)
                 .sum();
 
+        // 거절은 예외로 넘긴다. GlobalExceptionHandler 가 400-1 봉투로 옮기므로 검증 실패와 같은 모양이 된다.
+        // 서비스에 닿기 전이라 손님 행도 주문 행도 생기지 않는다
         if (totalCount <= 0 || totalCount > 100) {
-            return ResponseEntity
-                    .badRequest()
-                    .body(OrderDto.CreateResponse.rejected("주문 수량은 1개 이상 100개 이하만 가능합니다."));
+            throw new IllegalArgumentException("주문 수량은 1개 이상 100개 이하만 가능합니다.");
         }
 
-        return ResponseEntity.ok(orderFacade.createOrder(request).value());
+        return new RsData<>(
+                "200-1",
+                "주문이 성공적으로 등록되었습니다.",
+                orderFacade.createOrder(request).value()
+        );
     }
 
     @Operation(
@@ -124,14 +124,15 @@ public class OrderController {
     })
 
     @PatchMapping("/api/order/{orderId}/status")
-    public ResponseEntity<OrderDto.ChangeStatusResponse> changeStatus(
+    public RsData<Void> changeStatus(
             @PathVariable Long orderId,
             @Valid @RequestBody OrderDto.ChangeStatusRequest request) {
 
         orderFacade.changeStatus(orderId, request.status());
 
-        return ResponseEntity.ok(
-                new OrderDto.ChangeStatusResponse("주문 상태가 변경되었습니다.")
+        return new RsData<>(
+                "200-1",
+                "주문 상태가 변경되었습니다."
         );
     }
 }

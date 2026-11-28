@@ -84,15 +84,18 @@ public class MenuControllerTest extends AbstractIntegrationTest {
                 .andExpect(handler().handlerType(MenuController.class))
                 .andExpect(handler().methodName("getMenus"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(menus.size()));
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
+                // 봉투가 아니라 data 의 길이를 센다. 봉투도 필드가 셋이라 setup 이 심은 메뉴 셋과
+                // 숫자가 같아서, $.length() 로 두면 경로가 틀려도 통과한다
+                .andExpect(jsonPath("$.data.length()").value(menus.size()));
 
         for (int i = 0; i < menus.size(); i++) {
             Menu menu = menus.get(i);
             resultActions
-                    .andExpect(jsonPath("$[%d].menu_name".formatted(i)).value(menu.getMenuName()))
-                    .andExpect(jsonPath("$[%d].img_url".formatted(i)).value(menu.getImgUrl()))
-                    .andExpect(jsonPath("$[%d].price".formatted(i)).value(menu.getMenuPrice()))
-                    .andExpect(jsonPath("$[%d].category".formatted(i)).value(menu.getCategory()));
+                    .andExpect(jsonPath("$.data[%d].menu_name".formatted(i)).value(menu.getMenuName()))
+                    .andExpect(jsonPath("$.data[%d].img_url".formatted(i)).value(menu.getImgUrl()))
+                    .andExpect(jsonPath("$.data[%d].price".formatted(i)).value(menu.getMenuPrice()))
+                    .andExpect(jsonPath("$.data[%d].category".formatted(i)).value(menu.getCategory()));
         }
     }
 
@@ -176,15 +179,15 @@ public class MenuControllerTest extends AbstractIntegrationTest {
         resultActions
                 .andExpect(status().isOk())
                 // 재고가 남아 있으면 수량이 그대로 실리고 품절이 아니다
-                .andExpect(jsonPath("$[?(@.menu_id == %d)].stock".formatted(재고있는메뉴.getId())).value(7))
-                .andExpect(jsonPath("$[?(@.menu_id == %d)].sold_out".formatted(재고있는메뉴.getId())).value(false))
+                .andExpect(jsonPath("$.data[?(@.menu_id == %d)].stock".formatted(재고있는메뉴.getId())).value(7))
+                .andExpect(jsonPath("$.data[?(@.menu_id == %d)].sold_out".formatted(재고있는메뉴.getId())).value(false))
                 // 재고가 0 이면 품절이다. 판정은 Stock 이 하고 화면이 계산하지 않는다
-                .andExpect(jsonPath("$[?(@.menu_id == %d)].stock".formatted(품절메뉴.getId())).value(0))
-                .andExpect(jsonPath("$[?(@.menu_id == %d)].sold_out".formatted(품절메뉴.getId())).value(true))
+                .andExpect(jsonPath("$.data[?(@.menu_id == %d)].stock".formatted(품절메뉴.getId())).value(0))
+                .andExpect(jsonPath("$.data[?(@.menu_id == %d)].sold_out".formatted(품절메뉴.getId())).value(true))
                 // 재고 행이 없으면 수량을 모르므로 0 이 아니라 null 이다. 없는 것과 0 개인 것은
                 // 다른 사실이고, 0 으로 적으면 응답이 사실과 다른 말을 하게 된다
-                .andExpect(jsonPath("$[?(@.menu_id == %d && @.stock == null)]".formatted(재고행없는메뉴.getId())).exists())
-                .andExpect(jsonPath("$[?(@.menu_id == %d)].sold_out".formatted(재고행없는메뉴.getId())).value(true));
+                .andExpect(jsonPath("$.data[?(@.menu_id == %d && @.stock == null)]".formatted(재고행없는메뉴.getId())).exists())
+                .andExpect(jsonPath("$.data[?(@.menu_id == %d)].sold_out".formatted(재고행없는메뉴.getId())).value(true));
     }
 
     @Test
@@ -260,13 +263,16 @@ public class MenuControllerTest extends AbstractIntegrationTest {
 
         // 특정 메뉴가 몇 번째인지가 아니라 전체가 오름차순인지를 본다. 트랜잭션 밖에서 도는
         // 다른 클래스가 남긴 행이 섞일 수 있어 자리는 이 테스트가 정할 수 없다.
-        List<Long> 메뉴아이디 = JsonPath.<List<Number>>read(body, "$[*].menu_id").stream()
+        List<Long> 메뉴아이디 = JsonPath.<List<Number>>read(body, "$.data[*].menu_id").stream()
                 .map(Number::longValue)
                 .toList();
-        assertThat(메뉴아이디).isSorted();
+
+        // 와일드카드 경로는 엉뚱한 곳을 가리켜도 예외 없이 빈 리스트를 돌려주고, 빈 리스트는 언제나
+        // 정렬돼 있다. 봉투를 씌운 뒤에도 옛 경로 $[*] 를 두면 이 단언이 그렇게 통과한다
+        assertThat(메뉴아이디).isNotEmpty().isSorted();
     }
 
-    // t07 부터 t09 는 메뉴 수정이 가격 규칙을 지키는지 본다. 가격은 0원 이상 10,000,000원 이하다. FR-MNU-03.
+    // t07 부터 t09 는 메뉴 수정이, t10 은 메뉴 등록이 가격 규칙을 지키는지 본다. 가격은 0원 이상 10,000,000원 이하다. FR-MNU-03.
     // 규칙의 경계값 자체는 MenuTest 가 POJO 로 보고, 여기서는 그 판정이 HTTP 응답으로 어떻게 나가는지를 본다.
 
     @Test
@@ -342,6 +348,34 @@ public class MenuControllerTest extends AbstractIntegrationTest {
                 .andDo(print());
 
         resultActions
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.resultCode").value("400-1"));
+    }
+
+    @Test
+    @DisplayName("메뉴 등록, 가격이 10,000,000원을 넘으면 400-1")
+    void t10() throws Exception {
+        // 등록 컨트롤러가 같은 범위를 앞단에서 먼저 보고 평문으로 400 을 내던 때가 있었다.
+        // 그 검사를 걷어낸 뒤로는 수정과 같은 Menu 의 판정을 지나 봉투로 나간다
+        ResultActions resultActions = mvc
+                .perform(
+                        post("/api/menu")
+                                .with(점주_토큰(accessTokenIssuer))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "category": "블렌디드",
+                                            "menuName": "너무 비싼 망패블",
+                                            "price": 10000001,
+                                            "imageURL": "tmpImgURL"
+                                        }
+                                        """)
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(handler().handlerType(MenuController.class))
+                .andExpect(handler().methodName("createMenu"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.resultCode").value("400-1"));
     }

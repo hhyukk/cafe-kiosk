@@ -20,8 +20,12 @@ export async function GET() {
       );
     }
 
-    const data = await backendResponse.json();
-    return NextResponse.json(data, { status: 200 });
+    // 백엔드는 RsData 봉투로 준다. 주문 조회 라우트처럼 message 와 data 만 골라 넘긴다
+    const responseBody = await backendResponse.json();
+    return NextResponse.json(
+      { message: responseBody.message, data: responseBody.data },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("메뉴 조회 프록시 오류:", error);
     return NextResponse.json(
@@ -81,12 +85,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 백엔드는 RsData 봉투로 준다. 화면은 message 만 읽으므로 그것만 넘긴다
     let message = "생성되었습니다.";
     try {
-      const text = await backendResponse.text();
-      if (text) {
-        message = text;
-      }
+      const responseBody = await backendResponse.json();
+      message = responseBody.message || message;
     } catch {
       // ignore
     }

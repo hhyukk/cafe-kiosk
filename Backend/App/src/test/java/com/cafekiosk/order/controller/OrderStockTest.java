@@ -153,7 +153,7 @@ public class OrderStockTest extends AbstractIntegrationTest {
                         .content(주문본문("stock-exact@example.com", 산토스.getId(), 3)))
                 .andDo(print())
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.orderNumber").isNotEmpty());
+                .andExpect(jsonPath("$.data.orderNumber").isNotEmpty());
 
         assertThat(재고(산토스)).isZero();
     }

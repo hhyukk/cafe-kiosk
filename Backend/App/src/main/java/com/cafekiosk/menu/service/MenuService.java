@@ -103,7 +103,7 @@ public class MenuService {
     // 낙관적 락 재시도는 롤백된 트랜잭션 밖 새 트랜잭션에서 일어나야 하므로(NFR-CON-05)
     // 그 컨트롤러 트랜잭션을 걷어냈고, 서비스가 자기 경계를 직접 갖는다.
     @Transactional
-    public void createMenu(CreateMenuRequestDto req, String registrantEmail) {
+    public MenuDto.MenuCreateResponse createMenu(CreateMenuRequestDto req, String registrantEmail) {
         Menu menu = new Menu(req.getMenuName(),req.getImageURL(),req.getPrice(),req.getCategory(),registrantEmail);
         menuRepository.save(menu);
 
@@ -114,6 +114,8 @@ public class MenuService {
         // 메뉴 저장이 먼저여야 한다. PK 가 IDENTITY 라 INSERT 가 나가야 id 가 정해지고
         // stock.menu_id 는 그 값을 참조한다. 초기 수량 0 은 Stock 이 소유한다.
         stockRepository.save(Stock.initialFor(menu));
+
+        return new MenuDto.MenuCreateResponse(menu.getId());
     }
 
     /**

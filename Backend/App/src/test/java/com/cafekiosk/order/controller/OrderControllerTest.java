@@ -155,11 +155,12 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                 .andExpect(handler().handlerType(OrderController.class))
                 .andExpect(handler().methodName("createOrder"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
                 .andExpect(jsonPath("$.message").value("주문이 성공적으로 등록되었습니다."))
                 // 손님은 대기번호를 받아간다
-                .andExpect(jsonPath("$.orderNumber").isNotEmpty())
+                .andExpect(jsonPath("$.data.orderNumber").isNotEmpty())
                 // 아메리카노(3000) x1 + 카페라떼(4000) x3
-                .andExpect(jsonPath("$.totalPrice").value(15000));
+                .andExpect(jsonPath("$.data.totalPrice").value(15000));
 
         // DB에 주문/주문상품이 잘 저장되었는지 간단 검증
         assertThat(orderRepository.findByCustomerEmail(email)).hasSize(1);
@@ -501,6 +502,54 @@ public class OrderControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("주문 생성 실패 - 총 수량이 100 을 넘으면 400 이고 RsData 봉투로 나간다")
+    void should_총수량이_100을_넘으면_400이다() throws Exception {
+        // 아이템마다는 100 이하이고 합계만 101 이다. 아이템 수량은 @Positive 가 보고 합계의 상한은
+        // 컨트롤러가 본다. 한때 이 거절만 봉투 없는 CreateResponse 모양이라 같은 400 인데도
+        // 검증 실패와 응답 모양이 달랐다
+        String requestBody = """
+                {
+                    "email": "test@test.com",
+                    "items": [
+                        { "menuId": %d, "count": 60 },
+                        { "menuId": %d, "count": 41 }
+                    ]
+                }
+                """.formatted(menu1.getId(), menu2.getId());
+
+        mvc.perform(post("/api/order")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andDo(print())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.resultCode").value("400-1"))
+                .andExpect(jsonPath("$.message").value("주문 수량은 1개 이상 100개 이하만 가능합니다."));
+
+        assertThat(orderRepository.findByCustomerEmail("test@test.com")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("주문 생성 실패 - 아이템이 비어 있으면 400 이고 RsData 봉투로 나간다")
+    void should_빈_주문은_400이다() throws Exception {
+        // items 의 @NotNull 은 빈 목록을 통과시키고, 아이템마다의 @Positive 는 볼 아이템이 없다.
+        // 합계 0 이 하한에 걸리는 것이 이 요청을 막는 유일한 자리다
+        String requestBody = """
+                {
+                    "email": "test@test.com",
+                    "items": []
+                }
+                """;
+
+        mvc.perform(post("/api/order")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andDo(print())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.resultCode").value("400-1"))
+                .andExpect(jsonPath("$.message").value("주문 수량은 1개 이상 100개 이하만 가능합니다."));
+    }
+
+    @Test
     @DisplayName("주문 생성 성공 - 여러 개의 다른 메뉴 주문")
     void createOrder_MultipleMenus_Success() throws Exception {
         String requestBody = String.format("""
@@ -549,6 +598,8 @@ public class OrderControllerTest extends AbstractIntegrationTest {
                         .content("{\"status\": \"IN_PROGRESS\"}"))
                 .andDo(print())
                 .andExpect(status().isOk())
+                // message 만 보면 봉투 없는 응답에도 같은 자리에 같은 값이 있어 통과한다. resultCode 는 봉투에만 있다
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
                 .andExpect(jsonPath("$.message").value("주문 상태가 변경되었습니다."));
 
         assertThat(orderRepository.findById(orderId).orElseThrow().getStatus())
