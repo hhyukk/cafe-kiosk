@@ -20,7 +20,8 @@ public class OrderDto {
     }
 
     // items 에 @Valid 를 붙여야 각 OrderItemRequest 의 제약까지 검증이 전파된다.
-    // @NotNull 만 두면 리스트가 비어 있지 않은지만 보고 요소 안은 들여다보지 않는다.
+    // @NotNull 만 두면 리스트가 null 인지만 보고 요소 안은 들여다보지 않는다.
+    // 빈 리스트는 @NotNull 도 @Valid 도 통과하고, 그 요청은 컨트롤러의 총 수량 검사가 400 으로 막는다.
     public record CreateRequest(
             @NotBlank @Email String email,
             @NotNull @Valid List<OrderItemRequest> items
