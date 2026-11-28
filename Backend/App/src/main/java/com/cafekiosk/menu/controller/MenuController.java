@@ -36,10 +36,14 @@ public class MenuController {
             @ApiResponse(responseCode = "200-1", description = "조회 성공")
     })
     @GetMapping
-    public List<MenuListResponse> getMenus() {
+    public RsData<List<MenuListResponse>> getMenus() {
         // 재고를 맞추는 일은 서비스 트랜잭션 안에서 끝난다. 여기서 조립하면
         // 영속성 컨텍스트 밖이라 재고를 붙일 때마다 메뉴를 다시 읽을 여지가 생긴다.
-        return menuService.findAllWithStock();
+        return new RsData<>(
+                "200-1",
+                "메뉴 목록 조회 성공",
+                menuService.findAllWithStock()
+        );
     }
 
     @Operation(summary = "메뉴 정보 수정", description = "특정 메뉴의 이름, 가격, 이미지 URL, 카테고리 정보를 업데이트합니다.")

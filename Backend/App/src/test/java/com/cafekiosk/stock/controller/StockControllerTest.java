@@ -125,8 +125,8 @@ public class StockControllerTest extends AbstractIntegrationTest {
         // 손님 화면은 여전히 담기 버튼을 열어 둔다
         mvc.perform(get("/api/menu"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.menu_id == %d)].stock".formatted(산토스.getId())).value(0))
-                .andExpect(jsonPath("$[?(@.menu_id == %d)].sold_out".formatted(산토스.getId())).value(true));
+                .andExpect(jsonPath("$.data[?(@.menu_id == %d)].stock".formatted(산토스.getId())).value(0))
+                .andExpect(jsonPath("$.data[?(@.menu_id == %d)].sold_out".formatted(산토스.getId())).value(true));
     }
 
     @Test

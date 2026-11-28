@@ -255,9 +255,12 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
         // 다른 테스트가 남긴 행이 목록에 섞일 수 있어서다. id 는 이 테스트가 만든 행 하나만 가리킨다.
         assertThat(menuRepository.findByIdAndDeletedAtIsNull(menu.getId())).isEmpty();
 
+        // 필터는 목록이 아닌 곳에 걸려도 예외 없이 빈 결과를 내고 isEmpty 는 그것을 통과시킨다.
+        // data 가 목록이라는 것을 먼저 세워야 빠졌다는 단언이 무언가를 검사한다
         mvc.perform(get("/api/menu"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.menu_id == %d)]".formatted(menu.getId())).isEmpty());
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data[?(@.menu_id == %d)]".formatted(menu.getId())).isEmpty());
     }
 
     @Test
