@@ -106,12 +106,15 @@ public class MenuController {
     }
 
     @DeleteMapping("/delete/{menu_id}")
-    public ResponseEntity<String> deleteMenu(
+    public RsData<Void> deleteMenu(
             @PathVariable Long menu_id
     ) {
         // 실패 갈래가 여기 없다. 없거나 이미 판매 중단된 메뉴면 서비스가 예외를 던지고
         // GlobalExceptionHandler 가 404 로 옮긴다. 이유는 MenuService.deleteMenu 주석에 있다.
         menuService.deleteMenu(menu_id);
-        return ResponseEntity.status(HttpStatus.OK).body("삭제되었습니다.");
+        return new RsData<>(
+                "200-1",
+                "삭제되었습니다."
+        );
     }
 }

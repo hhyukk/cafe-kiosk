@@ -240,7 +240,8 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
                 .andExpect(handler().handlerType(MenuController.class))
                 .andExpect(handler().methodName("deleteMenu"))
                 .andExpect(status().isOk())
-                .andExpect(content().string("삭제되었습니다."));
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
+                .andExpect(jsonPath("$.message").value("삭제되었습니다."));
 
         // 소프트 삭제는 두 얼굴을 함께 만족해야 한다. 하나만 보면 절반만 검증된다.
         //
@@ -283,7 +284,8 @@ public class MenuWriteTransactionTest extends AbstractIntegrationTest {
                 .andExpect(handler().handlerType(MenuController.class))
                 .andExpect(handler().methodName("deleteMenu"))
                 .andExpect(status().isOk())
-                .andExpect(content().string("삭제되었습니다."));
+                .andExpect(jsonPath("$.resultCode").value("200-1"))
+                .andExpect(jsonPath("$.message").value("삭제되었습니다."));
 
         // 응답만 봐서는 판매 중단이 커밋됐는지 모른다. 행을 다시 읽어 확인한다.
         Menu 커밋된메뉴 = menuRepository.findById(menu.getId()).orElseThrow();
